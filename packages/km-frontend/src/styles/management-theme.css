@@ -1,0 +1,92 @@
+/* Keep management aligned with the global cards, forms and navigation. */
+.library-view .mg-stats {
+  background: var(--panel);
+}
+.library-view .mg-stats strong {
+  color: var(--text);
+  font-size: 26px;
+}
+.library-view .mg-stats span {
+  font-size: 11px;
+}
+.library-view .mg-tabs {
+  gap: 6px;
+  padding-bottom: 8px;
+}
+.library-view .mg-tabs button {
+  padding: 10px 14px;
+  border-radius: 5px;
+  border-bottom: 0;
+}
+.library-view .mg-tabs button:hover {
+  background: var(--panel);
+  color: var(--text);
+}
+.library-view .mg-tabs button.active {
+  background: var(--raised);
+  color: var(--cyan);
+}
+.library-view .mg-filters {
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  padding: 12px;
+}
+.library-view .mg-filters input,
+.library-view .mg-filters select {
+  background: var(--panel);
+}
+.library-view .mg-toolbar button:not(.primary),
+.library-view .mg-pagination button {
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 5px;
+}
+.library-view .mg-toolbar button:hover:not(:disabled),
+.library-view .mg-pagination button:hover:not(:disabled) {
+  background: var(--raised);
+  border-color: var(--line);
+}
+.library-view .mg-table th {
+  background: var(--raised);
+  font-size: 10px;
+  color: var(--muted);
+}
+.library-view .mg-table td {
+  border-top-color: var(--line);
+}
+.library-view .mg-table tbody tr:hover {
+  background: var(--panel);
+}
+.library-view .mg-table td small {
+  color: var(--muted);
+}
+.library-view .mg-lane {
+  background: var(--panel);
+}
+.library-view .mg-doc-card,
+.library-view .mg-record {
+  background: var(--raised);
+}
+.library-view .mg-doc-card small {
+  color: var(--muted);
+}
+.library-view input:focus-visible,
+.library-view select:focus-visible,
+.library-view button:focus-visible {
+  outline: 2px solid var(--cyan);
+  outline-offset: 3px;
+}
+#mgConfirm,
+#mgDocument,
+#mgViewer {
+  background: var(--panel);
+  border-color: var(--line);
+}
+#mgViewer .mg-render-scroll {
+  background: var(--bg);
+}
+#mgViewer .mg-block.active {
+  background: var(--raised);
+  border-color: var(--cyan);
+}

@@ -1,0 +1,8 @@
+/.venv/
+/.dev/
+/.env
+/.env.dev.local
+data
+data_backup
+raw_data
+/source-versions/

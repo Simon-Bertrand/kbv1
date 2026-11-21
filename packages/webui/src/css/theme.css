@@ -1,0 +1,72 @@
+/* Change these semantic tokens to rebrand every component. Flat red palette. */
+@layer tokens {
+  :root {
+    color-scheme: light;
+    --color-canvas: #fcfbf9;
+    --color-surface: #ffffff;
+    --color-sidebar: #f3f1ed;
+    --color-subtle: #f6f4f1;
+    --color-hover: #ece9e4;
+    --color-text: #292724;
+    --color-muted: #706b64;
+    --color-border: #e4e0d9;
+    --color-accent: #c62828;
+    --color-accent-hover: #a91f24;
+    --color-accent-soft: #fdeaea;
+    --color-on-accent: #ffffff;
+    --color-success: #32654a;
+    --color-success-soft: #eaf2ec;
+    --color-danger: #a32d32;
+    --color-warning: #805600;
+    --color-warning-soft: #fff3d6;
+    --color-shadow: #29272412;
+    --color-backdrop: #17131366;
+    --color-code: #f0eeeb;
+    --color-document: #ffffff;
+    --font-sans: 'Source Sans 3', 'Segoe UI', sans-serif;
+    --font-display: var(--font-sans);
+    --font-mono: 'JetBrainsMono Nerd Font', 'JetBrains Mono', ui-monospace, monospace;
+    --space-1: .25rem;
+    --space-2: .5rem;
+    --space-3: .75rem;
+    --space-4: 1rem;
+    --space-5: 1.5rem;
+    --space-6: 2rem;
+    --space-7: 3rem;
+    --radius-sm: .4rem;
+    --radius-md: .75rem;
+    --radius-lg: 1.1rem;
+    --radius-pill: 100vmax;
+    --shadow-sm: 0 2px 8px var(--color-shadow);
+    --shadow-lg: 0 16px 60px var(--color-shadow);
+    --motion-fast: 160ms;
+    --size-control: 36px;
+    --size-touch-target: 44px;
+    --size-control-min: 0px;
+    --opacity-disabled: .45;
+  }
+  @media (max-width: 760px) { :root { --size-control-min: var(--size-touch-target); } }
+  :root[data-theme='dark'] {
+    color-scheme: dark;
+    --color-canvas: #1c1b1a;
+    --color-surface: #242321;
+    --color-sidebar: #171615;
+    --color-subtle: #2c2a27;
+    --color-hover: #35322e;
+    --color-text: #eeeae4;
+    --color-muted: #b0a89f;
+    --color-border: #3a3632;
+    --color-accent: #ff6b6b;
+    --color-accent-hover: #ff8585;
+    --color-accent-soft: #402323;
+    --color-on-accent: #240909;
+    --color-success: #9dceac;
+    --color-success-soft: #24332a;
+    --color-danger: #f1a3a3;
+    --color-warning: #efcb77;
+    --color-warning-soft: #382f1d;
+    --color-shadow: #00000033;
+    --color-backdrop: #00000099;
+    --color-code: #302d29;
+  }
+}

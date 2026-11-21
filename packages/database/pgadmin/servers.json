@@ -1,0 +1,13 @@
+{
+  "Servers": {
+    "1": {
+      "Name": "Knowledgebase",
+      "Group": "Servers",
+      "Host": "postgres",
+      "Port": 5432,
+      "MaintenanceDB": "knowledgebase",
+      "Username": "postgres",
+      "SSLMode": "prefer"
+    }
+  }
+}

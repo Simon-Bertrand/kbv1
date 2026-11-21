@@ -1,0 +1,58 @@
+services:
+  fileserver:
+    container_name: knowledgebase-standalone-fileserver
+    build:
+      network: none
+      pull: false
+      context: .
+    image: knowledgebase/fileserver:local
+    environment:
+      KB_ENV: ${KB_ENV:-dev}
+      ALLOWED_HOSTS: ${FILESERVER_ALLOWED_HOSTS:-*}
+      FILESERVER_LOG_PROXY_IPS: ${FILESERVER_LOG_PROXY_IPS:-}
+      FILESERVER_LEGACY_VERSIONS_ROOT: ${SOURCE_VERSIONS_DIR:+/srv/source-versions}
+      FILESERVER_JWT_SECRET: ${FILESERVER_JWT_SECRET:-}
+      FILESERVER_UI_SECRET: ${FILESERVER_UI_SECRET:-}
+      WEBUI_PUBLIC_ORIGIN: ${WEBUI_AUTH_URL:-http://localhost:4173}
+      FILESERVER_DEV_USER: ${FILESERVER_DEV_USER:-dev}
+      FILESERVER_DEV_PASSWORD: ${FILESERVER_DEV_PASSWORD:-dev}
+    ports:
+      - "${FILESERVER_HOST:-0.0.0.0}:${FILESERVER_PORT:-8080}:8080"
+    volumes:
+      - type: bind
+        source: ${SOURCE_VERSIONS_DIR:-${DATA_DIR:?DATA_DIR obligatoire}}
+        target: /srv/source-versions
+        read_only: true
+        bind:
+          create_host_path: false
+      - type: bind
+        source: ${DATA_DIR:?Définir DATA_DIR avec le chemin absolu des sources brutes dans le .env racine}
+        target: /srv/data
+        read_only: true
+        bind:
+          create_host_path: false
+    restart: unless-stopped
+    read_only: true
+    tmpfs:
+      - /var/cache/nginx
+      - /var/lib/nginx/tmp
+      - /var/run
+    ulimits:
+      nofile:
+        soft: 65535
+        hard: 65535
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    cap_add:
+      - CHOWN
+      - SETUID
+      - SETGID
+      - NET_BIND_SERVICE
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1:8081/health"]
+      interval: 20s
+      timeout: 5s
+      retries: 3
+      start_period: 10s

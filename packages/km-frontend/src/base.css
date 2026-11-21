@@ -1,0 +1,4 @@
+/* Keep original body-level flex/grid layouts while React owns one root. */
+#root {
+  display: contents;
+}

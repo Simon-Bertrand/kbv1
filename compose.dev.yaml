@@ -1,0 +1,303 @@
+name: kbv1
+
+# Ce lien remonte depuis packages/pdfparse jusqu'au workspace et son uv.lock.
+
+services:
+  postgres:
+    image: kbv1/postgres:local
+    pull_policy: never
+    build:
+      context: ./packages/database
+      network: none
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-knowledgebase}
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Définir POSTGRES_PASSWORD}
+      POSTGRES_AGENT_PASSWORD: ${POSTGRES_AGENT_PASSWORD:-dev-agent-password-replace-in-prod}
+      POSTGRES_KM_READER_PASSWORD: ${POSTGRES_KM_READER_PASSWORD:?Définir POSTGRES_KM_READER_PASSWORD}
+      POSTGRES_KM_WRITER_PASSWORD: ${POSTGRES_KM_WRITER_PASSWORD:?Définir POSTGRES_KM_WRITER_PASSWORD}
+      POSTGRES_WEBUI_PASSWORD: ${POSTGRES_WEBUI_PASSWORD:?Définir POSTGRES_WEBUI_PASSWORD}
+    ports:
+      - "127.0.0.1:${POSTGRES_PORT:-5432}:5432"
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -h 127.0.0.1 -U \"$$POSTGRES_USER\" -d \"$$POSTGRES_DB\""]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+      start_period: 30s
+
+  fileserver:
+    image: kbv1/fileserver:local
+    pull_policy: never
+    build:
+      context: ./packages/fileserver
+      network: none
+    environment:
+      KB_ENV: dev
+      ALLOWED_HOSTS: localhost,127.0.0.1,fileserver
+      FILESERVER_JWT_SECRET: ${FILESERVER_JWT_SECRET:?Définir FILESERVER_JWT_SECRET}
+      FILESERVER_UI_SECRET: ${FILESERVER_UI_SECRET:?Définir FILESERVER_UI_SECRET}
+      FILESERVER_LOG_PROXY_IPS: ${FILESERVER_LOG_PROXY_IPS:-}
+      FILESERVER_LEGACY_VERSIONS_ROOT: /srv/source-versions
+      WEBUI_PUBLIC_ORIGIN: ${WEBUI_AUTH_URL:-http://localhost:${WEBUI_PORT:-3000}}
+      FILESERVER_DEV_USER: ${FILESERVER_DEV_USER:-dev}
+      FILESERVER_DEV_PASSWORD: ${FILESERVER_DEV_PASSWORD:-dev}
+    ports:
+      - "127.0.0.1:${FILESERVER_PORT:-8080}:8080"
+    volumes:
+      - &corpus
+        type: bind
+        source: ${DATA_DIR:-./data}
+        target: /srv/data
+        read_only: true
+        bind:
+          create_host_path: false
+      - source-versions:/srv/source-versions:ro
+    read_only: true
+    tmpfs:
+      - /var/cache/nginx
+      - /var/lib/nginx:mode=0755
+      - /var/lib/nginx/tmp
+      - /var/run
+    security_opt:
+      - no-new-privileges:true
+    cap_drop: [ALL]
+    cap_add: [CHOWN, SETUID, SETGID, NET_BIND_SERVICE]
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1:8081/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  pdfparse:
+    image: kbv1/pdfparse:local
+    pull_policy: never
+    build:
+      context: .
+      dockerfile: packages/pdfparse/Dockerfile
+      network: none
+    environment:
+      KB_ENV: dev
+      ALLOWED_HOSTS: localhost,127.0.0.1,fileserver
+      MODELS_DIR: /models
+      PDFPARSE_ADMIN_USER: ${PDFPARSE_ADMIN_USER:-studio}
+      PDFPARSE_ADMIN_PASSWORD: ${PDFPARSE_ADMIN_PASSWORD:?Définir PDFPARSE_ADMIN_PASSWORD}
+    gpus: all
+    ports:
+      - "127.0.0.1:${PDFPARSE_PORT:-8000}:8000"
+    volumes:
+      - <<: *corpus
+        target: /data
+        read_only: false
+      - pdfparse-assets:/assets
+      - &models
+        type: bind
+        source: ${MODELS_DIR:-./models}
+        target: /models
+        read_only: true
+        bind:
+          create_host_path: false
+
+  encoder:
+    image: kbv1/encoder:local
+    pull_policy: never
+    build:
+      context: .
+      dockerfile: packages/embeddings/Dockerfile
+      network: none
+    environment:
+      MODELS_DIR: /models
+      E5_DEVICE: cpu
+    ports:
+      - "127.0.0.1:${ENCODER_PORT:-8001}:8001"
+    volumes:
+      - *models
+
+  indexer:
+    image: kbv1/indexer:local
+    pull_policy: never
+    user: "0:0"
+    # Aligne l’UID avec PdfParse et migre le volume d’état avant de quitter root.
+    entrypoint:
+      - sh
+      - -ec
+      - |
+        chown -hR 1000:10001 /state
+        exec setpriv --reuid=1000 --regid=10001 --clear-groups --no-new-privs "$$@"
+      - --
+    command: ["python", "-m", "uvicorn", "km_embeddings.index_service:app", "--host", "0.0.0.0", "--port", "8011", "--workers", "1", "--no-proxy-headers"]
+    build:
+      context: .
+      dockerfile: packages/embeddings/indexer/Dockerfile
+      network: none
+    environment:
+      KB_ENV: dev
+      ENCODER_URL: http://encoder:8001
+      KB_DATA_DIR: /data
+      KB_UPSTREAM_ROOT: /data
+      SOURCE_VERSIONS_DIR: /source-versions
+      KM_SOURCE_ARCHIVE_URL: http://km-api:8000/internal/source-versions
+      KM_INDEXER_TOKEN: ${KM_INDEXER_TOKEN:-}
+      KM_STATE_DIR: /state
+      KB_KM_SCHEMA: "1"
+      KB_DATABASE_URL: postgresql://km_writer@postgres:5432/${POSTGRES_DB:-knowledgebase}
+      PGPASSWORD: ${POSTGRES_KM_WRITER_PASSWORD:?Définir POSTGRES_KM_WRITER_PASSWORD}
+    ports:
+      - "127.0.0.1:${INDEXER_PORT:-8011}:8011"
+    volumes:
+      - <<: *corpus
+        target: /data
+      - indexer-state:/state
+      - source-versions:/source-versions:ro
+    depends_on:
+      km-api:
+        condition: service_healthy
+      postgres:
+        condition: service_healthy
+      encoder:
+        condition: service_healthy
+
+  source-versions-init:
+    image: kbv1/km-api:local
+    pull_policy: never
+    user: "0:0"
+    network_mode: none
+    entrypoint: ["sh", "-ec", "chmod 0755 /source-versions && chown 10001:10001 /source-versions"]
+    command: []
+    volumes:
+      - source-versions:/source-versions
+
+  km-api:
+    image: kbv1/km-api:local
+    pull_policy: never
+    build:
+      context: .
+      dockerfile: packages/km-api/Dockerfile
+      network: none
+    environment:
+      KB_ENV: dev
+      KB_KM_SCHEMA: "1"
+      KB_DATABASE_URL: postgresql://km_reader@postgres:5432/${POSTGRES_DB:-knowledgebase}
+      PGPASSWORD: ${POSTGRES_KM_READER_PASSWORD:?Définir POSTGRES_KM_READER_PASSWORD}
+      ENCODER_URL: http://encoder:8001
+      KB_CORPUS_ROOT: /data
+      KB_UPSTREAM_ROOT: /data
+      KB_FILESERVER_URL: http://fileserver:8080
+      SOURCE_VERSIONS_DIR: /source-versions
+      KM_INDEXER_TOKEN: ${KM_INDEXER_TOKEN:-}
+      FILESERVER_DEV_USER: ${FILESERVER_DEV_USER:-dev}
+      FILESERVER_DEV_PASSWORD: ${FILESERVER_DEV_PASSWORD:-dev}
+      KM_API_TOKEN: ${KM_API_TOKEN:-}
+    volumes:
+      - <<: *corpus
+        target: /data
+      - source-versions:/source-versions
+    depends_on:
+      source-versions-init:
+        condition: service_completed_successfully
+      postgres:
+        condition: service_healthy
+
+  km-frontend:
+    image: kbv1/km-frontend:local
+    pull_policy: never
+    build:
+      context: .
+      dockerfile: packages/km-frontend/Dockerfile
+      network: none
+    environment:
+      KB_ENV: dev
+      FRONTEND_RAG_URL: http://km-api:8000
+      FRONTEND_KB_URL: http://km-api:8000
+      FRONTEND_INDEX_URL: http://indexer:8011
+      FRONTEND_FILESERVER_URL: http://fileserver:8080
+      FRONTEND_AGENT_URL: ${FRONTEND_AGENT_URL:-http://km-agent:8086}
+      KM_API_TOKEN: ${KM_API_TOKEN:-}
+      KM_INDEXER_ADMIN_TOKEN: ${KM_INDEXER_ADMIN_TOKEN:-}
+      KM_CONSOLE_USER: ${KM_CONSOLE_USER:-admin}
+      KM_CONSOLE_PASSWORD: ${KM_CONSOLE_PASSWORD:-}
+      FILESERVER_DEV_USER: ${FILESERVER_DEV_USER:-dev}
+      FILESERVER_DEV_PASSWORD: ${FILESERVER_DEV_PASSWORD:-dev}
+      PDFPARSE_PORT: ${PDFPARSE_PORT:-8000}
+    ports:
+      - "127.0.0.1:${KM_FRONTEND_PORT:-8088}:8088"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      fileserver:
+        condition: service_healthy
+      indexer:
+        condition: service_started
+      km-api:
+        condition: service_started
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8088/health', timeout=3)"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+
+  webui:
+    image: kbv1/webui:local
+    pull_policy: never
+    restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+    build:
+      context: ./packages/webui
+      network: none
+    environment:
+      KB_ENV: dev
+      WEBUI_AGENT_URL: ${WEBUI_AGENT_URL:-http://km-agent:8086}
+      KM_AGENT_SERVICE_TOKEN: ${KM_AGENT_SERVICE_TOKEN:-}
+      WEBUI_KM_API_URL: http://km-api:8000
+      KM_API_TOKEN: ${KM_API_TOKEN:-}
+      WEBUI_RERANKER_URL: ${WEBUI_RERANKER_URL:-http://reranker:8002}
+      WEBUI_CHAT_SECONDS: ${WEBUI_CHAT_SECONDS:-180}
+      WEBUI_SEARCH_MODE: ${WEBUI_SEARCH_MODE:-hybrid}
+      WEBUI_DATABASE_URL: ${WEBUI_DATABASE_URL:-postgresql://webui-user:${POSTGRES_WEBUI_PASSWORD}@postgres:5432/${POSTGRES_DB:-knowledgebase}}
+      WEBUI_AUTH_URL: ${WEBUI_AUTH_URL:-http://localhost:${WEBUI_PORT:-3000}}
+      WEBUI_AUTH_TRUST_HOST: ${WEBUI_AUTH_TRUST_HOST:-true}
+      WEBUI_TRUST_PROXY: ${WEBUI_TRUST_PROXY:-false}
+      WEBUI_AUTH_SECRET: ${WEBUI_AUTH_SECRET:?Définir WEBUI_AUTH_SECRET}
+      WEBUI_AUTH_ADMIN_LOGIN: ${WEBUI_AUTH_ADMIN_LOGIN:-}
+      WEBUI_AUTH_ADMIN_PASSWORD: ${WEBUI_AUTH_ADMIN_PASSWORD:-}
+      WEBUI_AUTH_OIDC_ISSUER: ${WEBUI_AUTH_OIDC_ISSUER:-}
+      WEBUI_AUTH_OIDC_ID: ${WEBUI_AUTH_OIDC_ID:-}
+      WEBUI_AUTH_OIDC_SECRET: ${WEBUI_AUTH_OIDC_SECRET:-}
+      WEBUI_SESSION_EPOCH: ${WEBUI_SESSION_EPOCH:-0}
+      WEBUI_DISABLED_SUBJECTS: ${WEBUI_DISABLED_SUBJECTS:-}
+      WEBUI_LOGIN_IP_RPS: ${WEBUI_LOGIN_IP_RPS:-0.2}
+      WEBUI_LOGIN_IP_BURST: ${WEBUI_LOGIN_IP_BURST:-5}
+      WEBUI_LOGIN_ACCOUNT_RPS: ${WEBUI_LOGIN_ACCOUNT_RPS:-0.1}
+      WEBUI_LOGIN_ACCOUNT_BURST: ${WEBUI_LOGIN_ACCOUNT_BURST:-10}
+      WEBUI_CHAT_RATE_LIMIT_RPS: ${WEBUI_CHAT_RATE_LIMIT_RPS:-1}
+      WEBUI_CHAT_RATE_LIMIT_BURST: ${WEBUI_CHAT_RATE_LIMIT_BURST:-2}
+      WEBUI_SEARCH_RATE_LIMIT_RPS: ${WEBUI_SEARCH_RATE_LIMIT_RPS:-1}
+      WEBUI_SEARCH_RATE_LIMIT_BURST: ${WEBUI_SEARCH_RATE_LIMIT_BURST:-3}
+      FILESERVER_INTERNAL_URL: http://fileserver:8080
+      FILESERVER_PUBLIC_URL: ${FILESERVER_PUBLIC_URL:-http://localhost:${FILESERVER_PORT:-8080}}
+      FILESERVER_JWT_SECRET: ${FILESERVER_JWT_SECRET:?Définir FILESERVER_JWT_SECRET}
+    ports:
+      - "127.0.0.1:${WEBUI_PORT:-3000}:4173"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      fileserver:
+        condition: service_healthy
+      km-api:
+        condition: service_started
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:4173/ready').then(r => process.exit(r.ok ? 0 : 1)).catch(() => process.exit(1))"]
+      interval: 20s
+      timeout: 8s
+      retries: 5
+      start_period: 20s
+
+volumes:
+  postgres-data:
+  indexer-state:
+  pdfparse-assets:
+  source-versions:

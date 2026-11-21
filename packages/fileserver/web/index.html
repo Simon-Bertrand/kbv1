@@ -1,0 +1,28 @@
+<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>RAG Explorer</title>
+  <link rel="stylesheet" href="/style.css">
+  <script src="/app.js" defer></script>
+</head>
+<body>
+  <main class="shell">
+    <header>
+      <div class="brand"><span class="logo">▦</span><div><h1>RAG Explorer</h1><p>Storage des actifs du RAG</p></div></div>
+      <span class="badge">Lecture seule</span>
+    </header>
+    <section class="hero">
+      <div><small>Système de fichiers</small><h2 id="heading">Fichiers</h2><nav id="crumbs" aria-label="Chemin"></nav></div>
+      <a class="button" id="download-zip" href="/api/zip?path=" download>↓ Télécharger le dossier (ZIP)</a>
+    </section>
+    <section class="panel">
+      <div class="toolbar"><label for="search">Recherche dans ce dossier</label><input id="search" placeholder="Nom du fichier ou du répertoire…" autocomplete="off"><span id="count"></span></div>
+      <div class="table-wrap"><table><thead><tr><th>Nom</th><th>Type</th><th>Taille</th><th>Modification</th><th></th></tr></thead><tbody id="entries"></tbody></table></div>
+      <div class="message" id="message" hidden></div>
+    </section>
+    <footer>SDIN/CSD/DATA LAB - Mérignac</footer>
+  </main>
+</body>
+</html>

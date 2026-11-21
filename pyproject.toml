@@ -1,0 +1,68 @@
+[project]
+name = "knowledgebase"
+version = "0.1.0"
+requires-python = ">=3.12,<3.13"
+
+[dependency-groups]
+cuda-build = ["cuda-toolkit[cccl,nvcc]==13.0.3; sys_platform == 'linux' and platform_machine == 'x86_64'"]
+dev = ["pytest>=9,<10", "pytest-asyncio>=1,<2", "pyyaml>=6,<7", "pip", "packaging"]
+build = ["pip", "uv_build>=0.11.8,<0.12", "hatchling>=1.29,<2", "setuptools>=80,<85", "wheel"]
+dataset = ["huggingface-hub>=1.33,<2", "pyarrow>=26,<27", "pypdf>=6.20,<7", "requests>=2.34,<3"]
+
+[tool.uv]
+package = false
+fork-strategy = "fewest"
+constraint-dependencies = ["torch>=2.14.1", "opencv-python-headless==4.10.0.84"]
+
+[tool.uv.extra-build-dependencies]
+causal-conv1d = [{ requirement = "torch", match-runtime = true }, "packaging", "ninja"]
+
+[tool.uv.extra-build-variables.causal-conv1d]
+CAUSAL_CONV1D_FORCE_BUILD = "TRUE"
+
+[[tool.uv.dependency-metadata]]
+name = "causal-conv1d"
+version = "1.7.0"
+requires-dist = ["torch", "packaging", "ninja"]
+
+[tool.uv.sources]
+paddlepaddle-gpu = { index = "paddle-cu118" }
+torch = { index = "pytorch-cu130" }
+torchvision = { index = "pytorch-cu130" }
+
+[tool.uv.workspace]
+members = [
+    "packages/km-agent",
+    "packages/database/clients/python",
+    "packages/embeddings",
+    "packages/finetuning/dfctune",
+    "packages/finetuning/embedtune",
+    "packages/km-frontend",
+    "packages/ingestion",
+    "packages/km-api",
+    "packages/pdfparse",
+    "packages/reranker",
+]
+
+[[tool.uv.index]]
+name = "paddle-cu118"
+url = "https://www.paddlepaddle.org.cn/packages/stable/cu118/"
+explicit = true
+
+[[tool.uv.index]]
+name = "pytorch-cu130"
+url = "https://download.pytorch.org/whl/cu130"
+explicit = true
+
+[tool.pytest.ini_options]
+pythonpath = [
+    ".",
+    "packages/km-agent/src",
+    "packages/km-frontend",
+    "packages/embeddings/src",
+    "packages/km-api/src",
+    "packages/ingestion/src",
+    "packages/reranker/src",
+    "packages/database/clients/python/src",
+    "packages/pdfparse/src",
+]

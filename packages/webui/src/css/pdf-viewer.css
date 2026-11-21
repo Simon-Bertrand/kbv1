@@ -1,0 +1,72 @@
+@layer components {
+  .pdf-viewer { height: 100%; display: flex; flex-direction: column; min-height: 0; min-width: 0; }
+  .pdf-toolbar {
+    display: flex;
+    flex: 0 0 auto;
+    align-items: center;
+    justify-content: space-between;
+    flex-wrap: wrap;
+    gap: var(--space-2) var(--space-3);
+    padding: var(--space-2) var(--space-4);
+    border-block-end: 1px solid var(--color-border);
+    background: var(--color-surface);
+  }
+  .pdf-navigation, .pdf-tools, .pdf-page-form { display: flex; align-items: center; gap: var(--space-2); min-width: 0; }
+  .pdf-navigation [data-pdf-prev] .icon { transform: rotate(180deg); }
+  .pdf-page-form { color: var(--color-muted); font-size: .9rem; font-variant-numeric: tabular-nums; white-space: nowrap; }
+  .pdf-page-form .input {
+    width: 3.5rem;
+    min-height: max(var(--size-control), var(--size-control-min));
+    padding: var(--space-1);
+    text-align: center;
+    appearance: textfield;
+  }
+  .pdf-page-form .input::-webkit-inner-spin-button { appearance: none; }
+  .pdf-tools select { width: auto; min-height: max(var(--size-control), var(--size-control-min)); font-size: .9rem; }
+  .pdf-stage {
+    position: relative;
+    overflow: auto;
+    flex: 1;
+    min-height: 0;
+    padding: clamp(var(--space-2), 2vw, var(--space-5));
+    background: var(--color-subtle);
+    overscroll-behavior: contain;
+  }
+  .pdf-stage:focus-visible { outline-offset: -3px; }
+  .pdf-feedback { display: grid; place-content: center; justify-items: center; gap: var(--space-3); min-height: 100%; text-align: center; }
+  .pdf-feedback [role='alert'] { font-size: .95rem; }
+  .pdf-stage:has(.pdf-paper:not([hidden])) .pdf-feedback {
+    position: absolute;
+    inline-size: 1px;
+    block-size: 1px;
+    min-height: 0;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
+  }
+  .pdf-paper { position: relative; margin-inline: auto; background: var(--color-document); box-shadow: var(--shadow-sm); color-scheme: only light; }
+  .pdf-paper canvas { display: block; }
+  .pdf-citation-note { padding: var(--space-1) var(--space-3); font-size: .85rem; }
+  .pdf-citation-layer { position: absolute; inset: 0; overflow: hidden; pointer-events: none; }
+  .pdf-citation-box {
+    position: absolute;
+    border: 2px solid var(--color-accent);
+    background: color-mix(in srgb, var(--color-accent) 20%, transparent);
+  }
+  /* Text positioning follows PDF.js TextLayer (Apache-2.0); no viewer chrome is imported. */
+  .pdf-text-layer {
+    position: absolute; inset: 0; overflow: clip; text-align: initial; line-height: 1; text-size-adjust: none; forced-color-adjust: none; transform-origin: 0 0; --min-font-size: 1; --text-scale-factor: calc(var(--total-scale-factor) * var(--min-font-size)); --min-font-size-inv: calc(1 / var(--min-font-size));
+    :is(span, br) { color: transparent; position: absolute; white-space: pre; cursor: text; transform-origin: 0 0; }
+    > :not(.markedContent), .markedContent span:not(.markedContent) { z-index: 1; --font-height: 0; font-size: calc(var(--text-scale-factor) * var(--font-height)); --scale-x: 1; --rotate: 0deg; transform: rotate(var(--rotate)) scaleX(var(--scale-x)) scale(var(--min-font-size-inv)); }
+    .markedContent { display: contents; }
+    span[role='img'] { user-select: none; cursor: default; }
+    ::selection { color: transparent; background: color-mix(in srgb, var(--color-accent) 30%, transparent); }
+  }
+  @media (max-width: 760px) {
+    .pdf-toolbar { padding: var(--space-1) var(--space-2); }
+    .pdf-navigation, .pdf-tools, .pdf-page-form { gap: var(--space-1); }
+    .pdf-page-form .input { width: 2.8rem; }
+    .pdf-tools select { padding-inline: var(--space-2); }
+    .pdf-stage { padding-block-end: calc(var(--space-2) + env(safe-area-inset-bottom)); }
+  }
+}

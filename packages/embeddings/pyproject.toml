@@ -1,0 +1,43 @@
+[project]
+name = "km-embeddings"
+version = "0.1.0"
+description = "E5 embedding and indexing services for Knowledgebase"
+readme = "README.md"
+requires-python = ">=3.12,<3.13"
+dependencies = [
+    "fastapi>=0.115,<1",
+    "uvicorn>=0.34,<1",
+    "pydantic>=2.10,<3",
+    "psycopg[binary]>=3.2,<4",
+    "httpx>=0.28,<1",
+    "km-api>=0.1.0",
+]
+
+[project.optional-dependencies]
+inference = [
+    "sentence-transformers>=5,<7",
+    "torch>=2.4.0",
+]
+
+[dependency-groups]
+dev = [
+    "pytest>=8,<10",
+]
+
+[build-system]
+requires = ["hatchling>=1.26"]
+build-backend = "hatchling.build"
+
+
+[tool.uv.sources]
+km-api = { workspace = true }
+torch = { index = "pytorch-cu130" }
+
+[[tool.uv.index]]
+name = "pytorch-cu130"
+url = "https://download.pytorch.org/whl/cu130"
+explicit = true
+
+[tool.pytest.ini_options]
+pythonpath = ["src"]
+testpaths = ["tests"]

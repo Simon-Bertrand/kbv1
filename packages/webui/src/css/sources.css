@@ -1,0 +1,88 @@
+@layer layout {
+  .sources-dialog { background: var(--color-surface); }
+  .sources-dialog .dialog-header {
+    flex-shrink: 0;
+    gap: var(--space-3);
+    padding: var(--space-3) var(--space-4);
+  }
+  .sources-dialog .dialog-header h2 { margin: 0; min-width: 0; font-size: 1.18rem; font-weight: 650; }
+  .source-title { display: flex; align-items: center; gap: var(--space-3); overflow-wrap: anywhere; line-height: 1.2; }
+  .source-title .icon { flex-shrink: 0; color: var(--color-accent); }
+  .source-title > span {
+    display: -webkit-box;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 2;
+    overflow: hidden;
+  }
+  .sources-dialog .dialog-close { flex-shrink: 0; }
+  .sources-dialog .source-document h3 { font-size: 1rem; font-weight: 650; }
+  .sources-dialog .source-document p { font-size: .98rem; line-height: 1.6; white-space: pre-wrap; overflow-wrap: anywhere; }
+  .sources-dialog .source-document:focus { outline-offset: -3px; }
+  .source-pages { color: var(--color-muted); font-size: .84rem; }
+
+  .sources-dialog.has-pdf {
+    width: min(82rem, calc(100% - 2rem));
+    height: min(93dvh, 67rem);
+    max-height: 93dvh;
+    overflow: hidden;
+  }
+  .sources-dialog.has-pdf[open] { display: flex; flex-direction: column; }
+  .sources-dialog.has-pdf #sources-content { display: flex; flex: 1; min-height: 0; overflow: hidden; padding: 0; }
+  .source-reader {
+    display: grid;
+    grid-template-columns: clamp(14rem, 23vw, 19rem) minmax(0, 1fr);
+    flex: 1;
+    min-width: 0;
+    min-height: 0;
+  }
+  .source-reader > .source-document {
+    min-width: 0;
+    overflow: auto;
+    padding: var(--space-5);
+    border: 0;
+    border-inline-end: 1px solid var(--color-border);
+    border-radius: 0;
+    overscroll-behavior: contain;
+  }
+  .source-reader > .source-document header {
+    align-items: baseline;
+    flex-wrap: wrap;
+    gap: var(--space-1) var(--space-3);
+    margin-block-end: var(--space-3);
+    padding-block-end: var(--space-3);
+    border-block-end: 1px solid var(--color-border);
+  }
+  .source-mobile-navigation { display: none; }
+  #pdf-viewer { position: relative; min-width: 0; min-height: 0; }
+  .pdf-viewer-host { height: 100%; }
+  .pdf-loading { position: absolute; inset: 0; display: grid; place-content: center; padding: var(--space-4); }
+
+  @media (max-width: 760px) {
+    .sources-dialog.has-pdf {
+      width: 100%;
+      max-width: 100%;
+      height: 100dvh;
+      max-height: 100dvh;
+      margin: 0;
+      border: 0;
+      border-radius: 0;
+    }
+    .sources-dialog .dialog-header { padding: calc(var(--space-2) + env(safe-area-inset-top)) var(--space-3) var(--space-2); }
+    .source-reader { grid-template-columns: minmax(0, 1fr); grid-template-rows: auto minmax(0, 1fr); }
+    .source-mobile-navigation {
+      display: flex;
+      gap: var(--space-2);
+      padding: var(--space-2) var(--space-3);
+      border-block-end: 1px solid var(--color-border);
+    }
+    .source-mobile-navigation .button { flex: 1; background: var(--color-surface); }
+    .source-mobile-navigation .button[aria-pressed='true'] {
+      background: var(--color-accent-soft);
+      color: var(--color-accent);
+      border-color: var(--color-accent);
+    }
+    .source-reader[data-excerpt-open='false'] > .source-document,
+    .source-reader[data-excerpt-open='true'] > #pdf-viewer { display: none; }
+    .source-reader > .source-document { border: 0; }
+  }
+}

@@ -1,0 +1,10 @@
+__pycache__/
+.pytest_cache/
+.models/
+.assets/
+.wheel/
+pdfparse-docker.tar
+pdfparse-docker.tar.partial
+pdfparse-docker.tar.sha256
+
+.wheel_missing/

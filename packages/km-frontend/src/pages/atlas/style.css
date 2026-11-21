@@ -1,0 +1,272 @@
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  background: #f3f5f7;
+  color: var(--muted);
+  font:
+    14px "Segoe UI",
+    sans-serif;
+  overflow: hidden;
+}
+
+button,
+input,
+select {
+  font: inherit;
+  border: 1px solid #dbe2e7;
+  background: white;
+  border-radius: 9px;
+  padding: 10px;
+  color: inherit;
+}
+
+button {
+  cursor: pointer;
+}
+
+button:hover {
+  background: #eaf3ff;
+}
+
+button:focus-visible,
+input:focus-visible {
+  outline: 2px solid #1675eb;
+}
+
+header {
+  height: 78px;
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 18px 26px;
+  background: white;
+  border-bottom: 1px solid #dde4e8;
+}
+
+.brand {
+  font:
+    28px Georgia,
+    serif;
+}
+
+.brand b {
+  color: #1675eb;
+}
+
+.sub {
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.search {
+  margin-left: auto;
+  position: relative;
+  width: min(360px, 40vw);
+}
+
+input {
+  width: 100%;
+}
+
+#results {
+  position: absolute;
+  top: 44px;
+  background: white;
+  width: 100%;
+  max-height: 300px;
+  overflow: auto;
+  z-index: 10;
+  box-shadow: 0 12px 30px #273c4920;
+}
+
+#results button {
+  width: 100%;
+  text-align: left;
+  overflow-wrap: anywhere;
+  border: 0;
+}
+
+canvas {
+  position: absolute;
+  top: 78px;
+  width: 100%;
+  height: calc(100% - 78px);
+  touch-action: none;
+}
+
+#empty {
+  position: absolute;
+  left: 50%;
+  top: 45%;
+  transform: translate(-50%, -50%);
+  text-align: center;
+  width: min(500px, 90vw);
+}
+
+h1 {
+  font:
+    44px Georgia,
+    serif;
+}
+
+p {
+  line-height: 1.7;
+  color: var(--muted);
+}
+
+.primary {
+  background: #1675eb;
+  color: white;
+}
+
+.primary:hover {
+  background: #095fc7;
+}
+
+#status {
+  position: absolute;
+  top: 100px;
+  left: 24px;
+  padding: 12px;
+  background: #ffffffeb;
+  border-radius: 10px;
+  color: var(--muted);
+  font-size: 12px;
+  max-width: 85%;
+}
+
+.tools {
+  position: absolute;
+  bottom: 24px;
+  left: 24px;
+  display: flex;
+  gap: 6px;
+}
+
+.legend {
+  position: absolute;
+  bottom: 24px;
+  right: 24px;
+  color: var(--muted);
+  font-size: 12px;
+  background: #ffffffdd;
+  padding: 12px;
+  border-radius: 10px;
+}
+
+#tip,
+#popup {
+  position: fixed;
+  padding: 12px;
+  max-width: 320px;
+  background: white;
+  border: 1px solid #dbe2e7;
+  border-radius: 10px;
+  box-shadow: 0 8px 30px #273c4920;
+  overflow-wrap: anywhere;
+  z-index: 12;
+}
+
+#tip {
+  pointer-events: none;
+  font-size: 12px;
+}
+
+#popup button {
+  display: block;
+  margin-top: 12px;
+  width: 100%;
+}
+
+aside {
+  position: absolute;
+  right: 18px;
+  top: 96px;
+  bottom: 76px;
+  background: #fffffff5;
+  border: 1px solid #dbe2e7;
+  border-radius: 16px;
+  width: min(390px, 90vw);
+  padding: 24px;
+  overflow: auto;
+  box-shadow: 0 12px 40px #273c4915;
+}
+
+h2 {
+  font:
+    25px Georgia,
+    serif;
+  overflow-wrap: anywhere;
+}
+
+#close {
+  float: right;
+}
+
+dt {
+  margin-top: 20px;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+dd {
+  margin: 6px 0;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  line-height: 1.6;
+}
+
+#neighbors button {
+  display: block;
+  width: 100%;
+  text-align: left;
+  margin-top: 6px;
+  overflow-wrap: anywhere;
+}
+
+label {
+  display: block;
+  margin: 16px 0;
+}
+
+select {
+  width: 100%;
+  margin-top: 6px;
+}
+
+[hidden] {
+  display: none !important;
+}
+
+@media (max-width: 600px) {
+  header {
+    padding: 12px;
+    gap: 8px;
+  }
+  .sub,
+  .legend {
+    display: none;
+  }
+  .search {
+    flex: 1;
+    width: auto;
+  }
+  h1 {
+    font-size: 34px;
+  }
+}
+
+
+.brand { white-space: nowrap; }
+.brand b { font-weight: normal; }
+header button { white-space: nowrap; }
+.tools select { width: auto; max-width: 260px; margin: 0; }
+#status { max-width: calc(100% - 48px); border-left: 3px solid var(--cyan, #1675eb); }
+#meta dd { font: 12px/1.65 ui-monospace, monospace; }
+.source-link { display: inline-block; margin: 8px 0; color: var(--cyan, #1675eb); }
+.identity-dot { color: var(--cyan, #1675eb); }
+.reference-dot { color: var(--canvas-missing, #cc9956); }
+@media (max-width: 600px) { #more { max-width: 110px; white-space: normal; padding: 6px; } }

@@ -1,0 +1,51 @@
+services:
+  webui:
+    container_name: knowledgebase-standalone-webui
+    build:
+      network: none
+      pull: false
+      context: .
+    image: knowledgebase/webui:local
+    environment:
+      KM_AGENT_SERVICE_TOKEN: ${KM_AGENT_SERVICE_TOKEN:-}
+      KM_API_TOKEN: ${KM_API_TOKEN:-}
+      FILESERVER_INTERNAL_URL: ${FILESERVER_INTERNAL_URL:-http://fileserver:8080}
+      FILESERVER_PUBLIC_URL: ${FILESERVER_PUBLIC_URL:-http://localhost:8080}
+      FILESERVER_JWT_SECRET: ${FILESERVER_JWT_SECRET:-}
+      KB_ENV: ${KB_ENV:-dev}
+      WEBUI_AGENT_URL: ${WEBUI_AGENT_URL:-http://km-agent:8086}
+      WEBUI_RERANKER_URL: ${WEBUI_RERANKER_URL:-http://reranker:8002}
+      WEBUI_KM_API_URL: ${WEBUI_KM_API_URL:-http://km-api:8000}
+      WEBUI_CHAT_SECONDS: ${WEBUI_CHAT_SECONDS:-180}
+      WEBUI_SEARCH_MODE: ${WEBUI_SEARCH_MODE:-hybrid}
+      WEBUI_SESSION_EPOCH: ${WEBUI_SESSION_EPOCH:-0}
+      WEBUI_DISABLED_SUBJECTS: ${WEBUI_DISABLED_SUBJECTS:-}
+      WEBUI_LOGIN_IP_RPS: ${WEBUI_LOGIN_IP_RPS:-0.2}
+      WEBUI_LOGIN_IP_BURST: ${WEBUI_LOGIN_IP_BURST:-5}
+      WEBUI_LOGIN_ACCOUNT_RPS: ${WEBUI_LOGIN_ACCOUNT_RPS:-0.1}
+      WEBUI_LOGIN_ACCOUNT_BURST: ${WEBUI_LOGIN_ACCOUNT_BURST:-10}
+      WEBUI_CHAT_RATE_LIMIT_RPS: ${WEBUI_CHAT_RATE_LIMIT_RPS:-1}
+      WEBUI_CHAT_RATE_LIMIT_BURST: ${WEBUI_CHAT_RATE_LIMIT_BURST:-2}
+      WEBUI_SEARCH_RATE_LIMIT_RPS: ${WEBUI_SEARCH_RATE_LIMIT_RPS:-1}
+      WEBUI_SEARCH_RATE_LIMIT_BURST: ${WEBUI_SEARCH_RATE_LIMIT_BURST:-3}
+      WEBUI_AUTH_SECRET: ${WEBUI_AUTH_SECRET:-}
+      WEBUI_AUTH_ADMIN_LOGIN: ${WEBUI_AUTH_ADMIN_LOGIN:-}
+      WEBUI_AUTH_ADMIN_PASSWORD: ${WEBUI_AUTH_ADMIN_PASSWORD:-}
+      WEBUI_AUTH_URL: ${WEBUI_AUTH_URL:-http://localhost:4173}
+      WEBUI_TRUST_PROXY: ${WEBUI_TRUST_PROXY:-false}
+      WEBUI_AUTH_TRUST_HOST: ${WEBUI_AUTH_TRUST_HOST:-false}
+      WEBUI_AUTH_OIDC_ISSUER: ${WEBUI_AUTH_OIDC_ISSUER:-}
+      WEBUI_AUTH_OIDC_ID: ${WEBUI_AUTH_OIDC_ID:-}
+      WEBUI_AUTH_OIDC_SECRET: ${WEBUI_AUTH_OIDC_SECRET:-}
+      WEBUI_DATABASE_URL: ${WEBUI_DATABASE_URL:-postgresql://webui-user:dev-webui-password-1234@postgres:5432/knowledgebase}
+    ports:
+      - "${WEBUI_HOST:-0.0.0.0}:${WEBUI_PORT:-4173}:4173"
+    restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:4173/ready').then(r => process.exit(r.ok ? 0 : 1)).catch(() => process.exit(1))"]
+      interval: 20s
+      timeout: 5s
+      retries: 3
+      start_period: 20s

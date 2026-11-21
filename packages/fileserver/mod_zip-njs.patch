@@ -1,0 +1,32 @@
+--- a/config
++++ b/config
+@@ -4,6 +4,10 @@
+     ngx_module_name=ngx_http_zip_module
+     ngx_module_srcs="$ngx_addon_dir/ngx_http_zip_module.c $ngx_addon_dir/ngx_http_zip_parsers.c $ngx_addon_dir/ngx_http_zip_file.c $ngx_addon_dir/ngx_http_zip_headers.c"
+ 
++    # The copy filter must read file buffers before ZIP computes their CRC32.
++    ngx_module_type=HTTP_FILTER
++    ngx_module_order="ngx_http_postpone_filter_module ngx_http_gunzip_filter_module $ngx_module_name ngx_http_copy_filter_module"
++
+     . auto/module
+ elif [ $ngx_module_link = ADDON ] ; then
+     HTTP_AUX_FILTER_MODULES="$HTTP_AUX_FILTER_MODULES ngx_http_zip_module"
+--- a/ngx_http_zip_file.c
++++ b/ngx_http_zip_file.c
+@@ -432,8 +432,14 @@
+ 
+     // Collect names of original request's header fields that
+     // have to be present in each of the issued sub-requests.
+-    variable_header_status = ngx_http_zip_variable_unknown_header(r, vv, &ngx_http_zip_header_name_pass_headers,
+-            &r->upstream->headers_in.headers.part, sizeof("upstream_http_")-1);
++    if (r->upstream) {
++        variable_header_status = ngx_http_zip_variable_unknown_header(r, vv,
++                &ngx_http_zip_header_name_pass_headers,
++                &r->upstream->headers_in.headers.part, sizeof("upstream_http_")-1);
++    } else {
++        variable_header_status = NGX_OK;
++        vv->not_found = 1;
++    }
+ 
+     if (variable_header_status == NGX_OK && !vv->not_found) {
+         ngx_str_t *header;

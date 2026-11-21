@@ -1,0 +1,390 @@
+:root {
+  --paper: #f4f2e9;
+  --ink: #15362f;
+  --muted: #68756d;
+  --line: #d8ded3;
+  --red: #c62828;
+}
+* {
+  box-sizing: border-box;
+}
+body {
+  margin: 0;
+  background: var(--paper);
+  color: var(--ink);
+  font:
+    14px "Segoe UI",
+    sans-serif;
+}
+a {
+  color: var(--ink);
+}
+header {
+  padding: 22px 32px;
+  border-bottom: 1px solid var(--ink);
+  display: flex;
+  gap: 24px;
+  justify-content: space-between;
+  align-items: center;
+}
+.eyebrow {
+  font:
+    10px Consolas,
+    monospace;
+  letter-spacing: 2px;
+}
+h1 {
+  font:
+    29px Georgia,
+    serif;
+  margin: 9px 0;
+  overflow-wrap: anywhere;
+}
+header p {
+  margin: 0;
+  color: var(--muted);
+  max-width: 800px;
+  overflow-wrap: anywhere;
+}
+button,
+select,
+input {
+  font: inherit;
+  color: inherit;
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  background: #fffefa;
+  padding: 8px 11px;
+}
+button {
+  cursor: pointer;
+}
+button:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+button:hover {
+  border-color: var(--ink);
+}
+input[type="checkbox"] {
+  padding: 0;
+  accent-color: var(--ink);
+}
+.toolbar {
+  padding: 15px 32px;
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  flex-wrap: wrap;
+  border-bottom: 1px solid var(--line);
+}
+.toolbar label {
+  display: flex;
+  gap: 7px;
+  align-items: center;
+}
+#pages {
+  max-width: 280px;
+}
+.note {
+  font-size: 12px;
+  color: var(--muted);
+  line-height: 1.6;
+}
+#notice {
+  margin: 15px 32px;
+  color: #973a24;
+  min-height: 18px;
+}
+.workspace {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 350px;
+  gap: 24px;
+  padding: 0 32px 30px;
+}
+.reader {
+  border: 1px solid var(--line);
+  background: #e3e7de;
+  overflow: auto;
+  height: 78vh;
+  padding: 20px;
+}
+.sheet {
+  width: 100%;
+  min-width: 300px;
+  background: white;
+  box-shadow: 0 5px 20px #15362f18;
+}
+.sheet svg {
+  display: block;
+  width: 100%;
+  height: auto;
+}
+.box {
+  fill: transparent;
+  stroke: var(--red);
+  stroke-width: 1.15;
+  vector-effect: non-scaling-stroke;
+  cursor: pointer;
+}
+.region.active .box {
+  fill: var(--panel);
+  stroke-width: 2.5;
+}
+.region:hover .box {
+  stroke-width: 2;
+}
+.box-label {
+  fill: var(--red);
+  font:
+    8px Consolas,
+    monospace;
+  pointer-events: none;
+}
+.label-bg {
+  fill: #fffffff0;
+  pointer-events: none;
+}
+.no-labels .box-label,
+.no-labels .label-bg {
+  display: none;
+}
+.region:focus .box {
+  stroke-width: 2.8;
+}
+.side {
+  min-width: 0;
+}
+.side h2 {
+  font:
+    22px Georgia,
+    serif;
+  margin: 0 0 10px;
+}
+.side h3 {
+  font:
+    18px Georgia,
+    serif;
+  margin: 22px 0 10px;
+}
+.blocks {
+  max-height: 27vh;
+  overflow: auto;
+  border: 1px solid var(--line);
+  background: #fffefa;
+}
+.block-item {
+  display: block;
+  text-align: left;
+  width: 100%;
+  border: 0;
+  border-bottom: 1px solid var(--line);
+  border-radius: 0;
+  padding: 10px 12px;
+}
+.block-item.active {
+  border-left: 3px solid var(--red);
+  background: #f3e4db;
+}
+.block-item small {
+  display: block;
+  font:
+    11px Consolas,
+    monospace;
+  color: var(--muted);
+  margin-top: 5px;
+  overflow-wrap: anywhere;
+}
+.crop {
+  border: 1px solid var(--line);
+  background: white;
+  max-height: 250px;
+  overflow: auto;
+}
+.crop img {
+  display: block;
+  max-width: 100%;
+  height: auto;
+  margin: auto;
+}
+.crop svg {
+  display: block;
+  width: 100%;
+  max-height: 240px;
+}
+pre {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  line-height: 1.5;
+  font:
+    12px Consolas,
+    monospace;
+  max-height: 25vh;
+  overflow: auto;
+}
+#children a {
+  display: inline-block;
+  margin: 8px 12px 8px 0;
+}
+.blank {
+  padding: 35px;
+  line-height: 1.7;
+  color: var(--muted);
+}
+.source {
+  white-space: nowrap;
+  padding: 10px;
+  border: 1px solid var(--line);
+  background: #fffefa;
+  text-decoration: none;
+}
+.counts {
+  font:
+    11px Consolas,
+    monospace;
+}
+.danger-text {
+  color: var(--red);
+}
+@media (max-width: 950px) {
+  .workspace {
+    grid-template-columns: 1fr;
+  }
+  .reader {
+    height: 65vh;
+  }
+  .side {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 20px;
+  }
+  .side .details {
+    grid-column: 1/-1;
+  }
+  header,
+  .toolbar {
+    padding: 18px;
+  }
+  .workspace {
+    padding: 0 18px 20px;
+  }
+}
+@media (max-width: 550px) {
+  header {
+    display: block;
+  }
+  header nav {
+    margin-top: 15px;
+  }
+  .side {
+    display: block;
+  }
+  h1 {
+    font-size: 24px;
+  }
+}
+
+/* Page-first reading: fit both dimensions instead of stretching to the panel width. */
+header {
+  padding: 12px 20px;
+}
+h1 {
+  font-size: 23px;
+  margin: 5px 0;
+}
+.eyebrow {
+  display: none;
+}
+.toolbar {
+  padding: 10px 20px;
+  gap: 9px;
+}
+#notice {
+  margin: 4px 20px;
+  min-height: 16px;
+}
+.workspace {
+  padding: 0 20px 16px;
+  gap: 18px;
+}
+.reader {
+  height: var(--reader-height, 78vh);
+  padding: 10px;
+}
+.sheet {
+  min-width: 0;
+  margin: 0 auto;
+}
+.side {
+  max-height: var(--reader-height, 78vh);
+  overflow: auto;
+}
+#detailsToggle {
+  display: none;
+}
+body.reading {
+  overflow: hidden;
+}
+body.reading > header,
+body.reading > #notice {
+  display: none;
+}
+body.reading > .toolbar {
+  position: fixed;
+  inset: 0 0 auto;
+  z-index: 5;
+  background: var(--paper);
+  box-shadow: 0 1px 5px #15362f12;
+}
+body.reading > .workspace {
+  position: fixed;
+  inset: var(--toolbar-height, 65px) 0 0;
+  padding: 8px;
+  display: block;
+}
+body.reading .workspace > section {
+  height: 100%;
+}
+body.reading .reader {
+  height: 100%;
+  padding: 8px;
+}
+body.reading #method,
+body.reading #children {
+  display: none;
+}
+body.reading .side {
+  display: none;
+  position: fixed;
+  right: 8px;
+  top: calc(var(--toolbar-height, 65px) + 8px);
+  bottom: 8px;
+  width: min(350px, 90vw);
+  padding: 18px;
+  max-height: none;
+  background: var(--paper);
+  border: 1px solid var(--line);
+  box-shadow: -8px 0 24px #15362f22;
+  z-index: 4;
+}
+body.reading.show-details .side {
+  display: block;
+}
+body.reading #detailsToggle {
+  display: inline-block;
+}
+#fullscreen[aria-pressed="true"] {
+  background: var(--ink);
+  color: var(--paper);
+}
+@media (max-width: 950px) {
+  .reader {
+    height: var(--reader-height, 78vh);
+  }
+  .side {
+    max-height: none;
+  }
+  .workspace {
+    padding: 0 12px 16px;
+  }
+}

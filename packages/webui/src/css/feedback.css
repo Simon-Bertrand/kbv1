@@ -1,0 +1,32 @@
+@layer components {
+  .feedback-positive, .feedback-positive:is(:hover, :focus-visible) { color: var(--color-success); }
+  .feedback-negative, .feedback-negative:is(:hover, :focus-visible) { color: var(--color-danger); }
+  .icon-button[aria-pressed='true'].feedback-positive { background: var(--color-success-soft); }
+  .icon-button[aria-pressed='true'].feedback-negative { background: var(--color-accent-soft); }
+  .annotation-dialog { width: min(660px, calc(100% - 24px)); }
+  .quick-feedback-dialog { width: min(460px, calc(100% - 24px)); }
+  .annotation-dialog .dialog-header h2 { font-size: 23px; }
+  .annotation-form { display: grid; gap: 16px; }
+  .feedback-invitation { font-size: 15px; line-height: 1.55; }
+  .annotation-form fieldset { border: 0; padding: 0; margin: 0; min-width: 0; }
+  .annotation-form legend { font-size: 14px; font-weight: 600; padding: 0; margin-bottom: 8px; }
+  .annotation-form legend .muted { font-size: 12px; font-weight: 400; margin-left: 5px; }
+  .annotation-form .field { font-size: 14px; }
+  .annotation-form .field > .muted { font-size: 12px; font-weight: 400; }
+  .annotation-form textarea { resize: vertical; min-height: 80px; font-size: 16px; }
+  .form-hint { font-size: 12px; line-height: 1.5; }
+  .sentiment-options label, .issue-options label { display: inline-flex; align-items: center; gap: 7px; font-size: 13px; padding: 7px 10px; border: 1px solid var(--color-border); border-radius: var(--radius-sm); background: var(--color-surface); cursor: pointer; margin: 0 5px 7px 0; }
+  .annotation-form label:has(input:checked) { border-color: currentColor; }
+  .annotation-footer { display: flex; justify-content: flex-end; gap: 10px; border-top: 1px solid var(--color-border); padding-top: 16px; }
+  .annotation-form [data-form-error]:empty { display: none; }
+  .export-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 18px; }
+  .annotation-list { margin-top: 20px; }
+  .annotation-list-item { padding: 16px 0; border-top: 1px solid var(--color-border); overflow-wrap: anywhere; }
+  .annotation-list-item h3 { font-size: 15px; margin: 8px 0; }
+  .annotation-list-item p { font-size: 13px; white-space: pre-wrap; }
+  .evaluation-catalog { grid-column: 1 / -1; }
+  @media (max-width: 600px) {
+    .annotation-dialog .dialog-body { padding: 18px; }
+    .annotation-footer .button { padding-inline: 10px; }
+  }
+}

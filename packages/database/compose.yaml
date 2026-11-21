@@ -1,0 +1,55 @@
+name: knowledgebase-sql
+
+services:
+  postgres:
+    container_name: knowledgebase-standalone-postgres
+    build:
+      network: none
+      pull: false
+      context: .
+    image: knowledgebase/postgres:local
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-knowledgebase}
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-testpass}
+      POSTGRES_AGENT_PASSWORD: ${POSTGRES_AGENT_PASSWORD:-dev-agent-password-replace-in-prod}
+      POSTGRES_KM_RERANKER_PASSWORD: ${POSTGRES_KM_RERANKER_PASSWORD:-}
+      POSTGRES_KM_READER_PASSWORD: ${POSTGRES_KM_READER_PASSWORD:-dev-km-reader-password-replace-in-prod}
+      POSTGRES_KM_WRITER_PASSWORD: ${POSTGRES_KM_WRITER_PASSWORD:-dev-km-writer-password-replace-in-prod}
+      POSTGRES_WEBUI_PASSWORD: ${POSTGRES_WEBUI_PASSWORD:-dev-webui-password-1234}
+    ports:
+      - "${POSTGRES_HOST:-127.0.0.1}:${POSTGRES_PORT:-5432}:5432"
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -h 127.0.0.1 -U postgres -d ${POSTGRES_DB:-knowledgebase}"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+      start_period: 30s
+    restart: unless-stopped
+
+  pgadmin:
+    container_name: knowledgebase-standalone-pgadmin
+    build:
+      network: none
+      pull: false
+      context: ./pgadmin
+    image: knowledgebase/pgadmin:local
+    environment:
+      PGADMIN_DEFAULT_EMAIL: ${PGADMIN_EMAIL:-admin@example.com}
+      PGADMIN_DEFAULT_PASSWORD: ${PGADMIN_PASSWORD:-adminpass}
+      PGADMIN_CONFIG_ALLOWED_HOSTS: ${PGADMIN_ALLOWED_HOSTS:-[]}
+    ports:
+      - "${PGADMIN_HOST:-127.0.0.1}:${PGADMIN_PORT:-5050}:80"
+    volumes:
+      - pgadmin-data:/var/lib/pgadmin
+      - ./pgadmin/servers.json:/pgadmin4/servers.json:ro
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: unless-stopped
+
+volumes:
+  postgres-data:
+  pgadmin-data:

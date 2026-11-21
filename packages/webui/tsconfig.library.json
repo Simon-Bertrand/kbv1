@@ -1,0 +1,21 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "noEmit": false,
+    "declaration": true,
+    "emitDeclarationOnly": true,
+    "outDir": "dist-ui/types",
+    "rootDir": "src",
+    "jsx": "react-jsx",
+    "incremental": false,
+    "plugins": []
+  },
+  "include": [
+    "src/components/index.ts",
+    "src/store/contracts.ts",
+    "src/content/index.ts",
+    "src/store/index.ts",
+    "src/store/client/index.ts",
+    "src/components/providers/index.ts"
+  ]
+}

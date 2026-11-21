@@ -1,0 +1,19 @@
+node_modules/
+dist/
+dist-ui/
+playwright-report/
+test-results/
+.env*
+!.env.example
+.DS_Store
+
+# Generated from the installed PDF.js version
+public/pdfjs/
+
+# Local dependency cache prepared by make deps (never served publicly)
+.deps/
+
+.next/
+next-env.d.ts
+*.tsbuildinfo
+

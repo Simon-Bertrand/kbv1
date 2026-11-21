@@ -1,0 +1,88 @@
+{
+  "name": "reno-plus-chat-template",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "scripts": {
+    "dev": "next dev --hostname 0.0.0.0 --port 4173",
+    "build": "npm run build:ui && next build --webpack",
+    "start": "next start --hostname 0.0.0.0 --port 4173",
+    "preview": "npm run start",
+    "check": "tsc --noEmit",
+    "test": "playwright test --config playwright.agent.config.ts",
+    "predev": "node scripts/sync-pdf-assets.mjs",
+    "prebuild": "node scripts/sync-pdf-assets.mjs",
+    "postinstall": "node scripts/sync-pdf-assets.mjs",
+    "build:ui": "node scripts/build-library.mjs",
+    "check:ui": "node scripts/check-library.mjs",
+    "test:chat": "node src/store/chat/model.test.mjs",
+    "test:store": "node src/store/store.test.mjs",
+    "test:client": "node src/store/client/client.test.mjs",
+    "test:auth": "node scripts/test-agent.mjs src/backend/auth/config.test.mjs",
+    "test:agent": "node scripts/test-agent.mjs",
+    "test:conversations": "node scripts/test-agent.mjs src/backend/chat/conversation-repository.test.mjs",
+    "test:sse": "node scripts/test-agent.mjs src/backend/chat/events.test.mjs && node scripts/test-agent.mjs src/store/chat/http-provider.test.mjs"
+  },
+  "engines": {
+    "node": ">=22.13.0"
+  },
+  "devDependencies": {
+    "@playwright/test": "1.63.0",
+    "@types/node": "25.9.8",
+    "@types/react": "19.2.18",
+    "@types/react-dom": "19.2.4",
+    "lightningcss": "1.33.0",
+    "rolldown": "1.2.16",
+    "typescript": "6.0.3"
+  },
+  "dependencies": {
+    "@types/pg": "^8.23.1",
+    "dompurify": "3.4.17",
+    "marked": "15.0.12",
+    "next": "16.4.5",
+    "next-auth": "5.0.0-beta.32",
+    "pdfjs-dist": "6.2.108",
+    "pg": "^8.23.1",
+    "react": "19.2.8",
+    "react-dom": "19.2.8"
+  },
+  "files": [
+    "dist-ui"
+  ],
+  "sideEffects": [
+    "**/*.css"
+  ],
+  "exports": {
+    ".": {
+      "types": "./dist-ui/types/components/index.d.ts",
+      "import": "./dist-ui/components.js"
+    },
+    "./contracts": {
+      "types": "./dist-ui/types/store/contracts.d.ts",
+      "import": "./dist-ui/contracts.js"
+    },
+    "./styles.css": "./dist-ui/reno-ui.css",
+    "./template.css": "./dist-ui/reno-template.css",
+    "./fonts.css": "./dist-ui/fonts.css",
+    "./texts": {
+      "types": "./dist-ui/types/content/index.d.ts",
+      "import": "./dist-ui/texts.js"
+    },
+    "./texts/fr.json": "./dist-ui/texts/fr.json",
+    "./store": {
+      "types": "./dist-ui/types/store/index.d.ts",
+      "import": "./dist-ui/store.js"
+    },
+    "./client": {
+      "types": "./dist-ui/types/store/client/index.d.ts",
+      "import": "./dist-ui/client.js"
+    },
+    "./react": {
+      "types": "./dist-ui/types/components/providers/index.d.ts",
+      "import": "./dist-ui/react.js"
+    }
+  },
+  "overrides": {
+    "postcss": "8.5.28"
+  }
+}

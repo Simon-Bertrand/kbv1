@@ -1,0 +1,2390 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "PdfParse Studio",
+    "version": "1.0.0"
+  },
+  "paths": {
+    "/api/jobs": {
+      "get": {
+        "summary": "List Jobs",
+        "operationId": "listJobs",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/Job"
+                  },
+                  "type": "array",
+                  "title": "Response Listjobs"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/jobs/{job_id}/stop": {
+      "post": {
+        "summary": "Stop Folder Job",
+        "operationId": "stopFolderJob",
+        "parameters": [
+          {
+            "name": "job_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Job Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Job"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/runtime/options": {
+      "get": {
+        "summary": "Get Runtime Options",
+        "operationId": "getRuntimeOptions",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RuntimeOptions"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/runtime": {
+      "get": {
+        "summary": "Get Runtime",
+        "operationId": "getRuntime",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RuntimeStatus"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "summary": "Load Runtime",
+        "operationId": "loadRuntime",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RuntimeConfiguration-Input"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "202": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RuntimeStatus"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "summary": "Unload Runtime",
+        "operationId": "unloadRuntime",
+        "responses": {
+          "202": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RuntimeStatus"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/source": {
+      "get": {
+        "summary": "Get Source Root",
+        "operationId": "getSourceRoot",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SourceRoot"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "summary": "Select Source Root",
+        "operationId": "selectSourceRoot",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SourceRootSelection"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SourceRoot"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/folders": {
+      "get": {
+        "summary": "List Folders",
+        "operationId": "listFolders",
+        "parameters": [
+          {
+            "name": "path",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "default": "",
+              "title": "Path"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FolderListing"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/documents": {
+      "get": {
+        "summary": "List Documents",
+        "operationId": "listDocuments",
+        "parameters": [
+          {
+            "name": "folder",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "default": "",
+              "title": "Folder"
+            }
+          },
+          {
+            "name": "recursive",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "boolean",
+              "default": true,
+              "title": "Recursive"
+            }
+          },
+          {
+            "name": "page",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "default": 1,
+              "title": "Page"
+            }
+          },
+          {
+            "name": "page_size",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 200,
+              "minimum": 1,
+              "default": 50,
+              "title": "Page Size"
+            }
+          },
+          {
+            "name": "search",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "default": "",
+              "title": "Search"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Documents"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/documents/process": {
+      "post": {
+        "summary": "Schedule Folder",
+        "operationId": "processFolder",
+        "parameters": [
+          {
+            "name": "folder",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "default": "",
+              "title": "Folder"
+            }
+          }
+        ],
+        "responses": {
+          "202": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Job"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/documents/{document_id}": {
+      "get": {
+        "summary": "Get Document",
+        "operationId": "getDocument",
+        "parameters": [
+          {
+            "name": "document_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Document Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Document"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/documents/{document_id}/pdf": {
+      "get": {
+        "summary": "Get Pdf",
+        "operationId": "getPdf",
+        "parameters": [
+          {
+            "name": "document_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Document Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/pdf": {
+                "schema": {
+                  "type": "string",
+                  "format": "binary"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/documents/{document_id}/process": {
+      "post": {
+        "summary": "Process Document",
+        "operationId": "processDocument",
+        "parameters": [
+          {
+            "name": "document_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Document Id"
+            }
+          }
+        ],
+        "responses": {
+          "202": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Document"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/documents/{document_id}/result": {
+      "get": {
+        "summary": "Get Result",
+        "operationId": "getResult",
+        "parameters": [
+          {
+            "name": "document_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Document Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Result"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/documents/{document_id}/assets/{asset_id}": {
+      "get": {
+        "summary": "Get Asset",
+        "operationId": "getAsset",
+        "parameters": [
+          {
+            "name": "document_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Document Id"
+            }
+          },
+          {
+            "name": "asset_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Asset Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "image/png": {
+                "schema": {
+                  "type": "string",
+                  "format": "binary"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/settings": {
+      "get": {
+        "summary": "Get Settings",
+        "operationId": "getSettings",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Settings"
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "Asset": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id"
+          },
+          "ref": {
+            "type": "string",
+            "title": "Ref"
+          },
+          "asset_path": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Asset Path"
+          },
+          "caption": {
+            "type": "string",
+            "title": "Caption"
+          },
+          "description": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Description"
+          },
+          "locations": {
+            "items": {
+              "$ref": "#/components/schemas/Geometry"
+            },
+            "type": "array",
+            "title": "Locations"
+          },
+          "models": {
+            "items": {
+              "additionalProperties": {
+                "$ref": "#/components/schemas/JsonValue"
+              },
+              "type": "object"
+            },
+            "type": "array",
+            "title": "Models"
+          },
+          "classification": {
+            "$ref": "#/components/schemas/JsonValue"
+          },
+          "chunk_ids": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Chunk Ids"
+          },
+          "available": {
+            "type": "boolean",
+            "title": "Available"
+          },
+          "url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Url"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "id",
+          "ref",
+          "asset_path",
+          "caption",
+          "description",
+          "locations",
+          "models",
+          "classification",
+          "chunk_ids",
+          "available",
+          "url"
+        ],
+        "title": "Asset"
+      },
+      "ChunkView": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id"
+          },
+          "text": {
+            "type": "string",
+            "title": "Text"
+          },
+          "context": {
+            "type": "string",
+            "title": "Context"
+          },
+          "contextualized_text": {
+            "type": "string",
+            "title": "Contextualized Text"
+          },
+          "source_refs": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Source Refs"
+          },
+          "locations": {
+            "items": {
+              "$ref": "#/components/schemas/Geometry"
+            },
+            "type": "array",
+            "title": "Locations"
+          },
+          "transformation_id": {
+            "type": "string",
+            "title": "Transformation Id"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "id",
+          "text",
+          "context",
+          "contextualized_text",
+          "source_refs",
+          "locations",
+          "transformation_id"
+        ],
+        "title": "ChunkView"
+      },
+      "DeviceOption": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id"
+          },
+          "label": {
+            "type": "string",
+            "title": "Label"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "id",
+          "label"
+        ],
+        "title": "DeviceOption"
+      },
+      "Document": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id"
+          },
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "path": {
+            "type": "string",
+            "title": "Path"
+          },
+          "size": {
+            "type": "integer",
+            "title": "Size"
+          },
+          "version": {
+            "type": "string",
+            "title": "Version"
+          },
+          "status": {
+            "$ref": "#/components/schemas/Status",
+            "default": "idle"
+          },
+          "error": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "id",
+          "name",
+          "path",
+          "size",
+          "version",
+          "status",
+          "error"
+        ],
+        "title": "Document"
+      },
+      "Documents": {
+        "properties": {
+          "folder": {
+            "type": "string",
+            "title": "Folder"
+          },
+          "documents": {
+            "items": {
+              "$ref": "#/components/schemas/Document"
+            },
+            "type": "array",
+            "title": "Documents"
+          },
+          "total": {
+            "type": "integer",
+            "title": "Total"
+          },
+          "page": {
+            "type": "integer",
+            "title": "Page"
+          },
+          "page_size": {
+            "type": "integer",
+            "title": "Page Size"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "folder",
+          "documents",
+          "total",
+          "page",
+          "page_size"
+        ],
+        "title": "Documents"
+      },
+      "EnrichmentSelection-Input": {
+        "properties": {
+          "figures": {
+            "type": "string",
+            "enum": [
+              "keep",
+              "ocr",
+              "vlm",
+              "ocr_vlm",
+              "table"
+            ],
+            "title": "Figures",
+            "default": "ocr_vlm"
+          },
+          "class_routes": {
+            "additionalProperties": {
+              "type": "string",
+              "enum": [
+                "keep",
+                "ocr",
+                "vlm",
+                "ocr_vlm",
+                "table"
+              ]
+            },
+            "type": "object",
+            "title": "Class Routes"
+          },
+          "fallback": {
+            "type": "string",
+            "enum": [
+              "keep",
+              "ocr",
+              "vlm",
+              "ocr_vlm",
+              "table"
+            ],
+            "title": "Fallback",
+            "default": "ocr_vlm"
+          },
+          "confidence_threshold": {
+            "type": "number",
+            "maximum": 1.0,
+            "minimum": 0.0,
+            "title": "Confidence Threshold",
+            "default": 0.8
+          },
+          "text_ocr": {
+            "type": "boolean",
+            "title": "Text Ocr",
+            "default": false
+          },
+          "page_vlm": {
+            "type": "boolean",
+            "title": "Page Vlm",
+            "default": false
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "title": "EnrichmentSelection"
+      },
+      "EnrichmentSelection-Output": {
+        "properties": {
+          "figures": {
+            "type": "string",
+            "enum": [
+              "keep",
+              "ocr",
+              "vlm",
+              "ocr_vlm",
+              "table"
+            ],
+            "title": "Figures",
+            "default": "ocr_vlm"
+          },
+          "class_routes": {
+            "additionalProperties": {
+              "type": "string",
+              "enum": [
+                "keep",
+                "ocr",
+                "vlm",
+                "ocr_vlm",
+                "table"
+              ]
+            },
+            "type": "object",
+            "title": "Class Routes"
+          },
+          "fallback": {
+            "type": "string",
+            "enum": [
+              "keep",
+              "ocr",
+              "vlm",
+              "ocr_vlm",
+              "table"
+            ],
+            "title": "Fallback",
+            "default": "ocr_vlm"
+          },
+          "confidence_threshold": {
+            "type": "number",
+            "maximum": 1.0,
+            "minimum": 0.0,
+            "title": "Confidence Threshold",
+            "default": 0.8
+          },
+          "text_ocr": {
+            "type": "boolean",
+            "title": "Text Ocr",
+            "default": false
+          },
+          "page_vlm": {
+            "type": "boolean",
+            "title": "Page Vlm",
+            "default": false
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "figures",
+          "class_routes",
+          "fallback",
+          "confidence_threshold",
+          "text_ocr",
+          "page_vlm"
+        ],
+        "title": "EnrichmentSelection"
+      },
+      "Folder": {
+        "properties": {
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "path": {
+            "type": "string",
+            "title": "Path"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "name",
+          "path"
+        ],
+        "title": "Folder"
+      },
+      "FolderListing": {
+        "properties": {
+          "root": {
+            "type": "string",
+            "title": "Root"
+          },
+          "path": {
+            "type": "string",
+            "title": "Path"
+          },
+          "parent": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Parent"
+          },
+          "folders": {
+            "items": {
+              "$ref": "#/components/schemas/Folder"
+            },
+            "type": "array",
+            "title": "Folders"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "root",
+          "path",
+          "parent",
+          "folders"
+        ],
+        "title": "FolderListing"
+      },
+      "Geometry": {
+        "properties": {
+          "page_no": {
+            "type": "integer",
+            "title": "Page No"
+          },
+          "bbox": {
+            "prefixItems": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "number"
+              },
+              {
+                "type": "number"
+              },
+              {
+                "type": "number"
+              }
+            ],
+            "type": "array",
+            "maxItems": 4,
+            "minItems": 4,
+            "title": "Bbox"
+          },
+          "coord_origin": {
+            "type": "string",
+            "enum": [
+              "TOPLEFT",
+              "BOTTOMLEFT"
+            ],
+            "title": "Coord Origin"
+          },
+          "charspan": {
+            "anyOf": [
+              {
+                "prefixItems": [
+                  {
+                    "type": "integer"
+                  },
+                  {
+                    "type": "integer"
+                  }
+                ],
+                "type": "array",
+                "maxItems": 2,
+                "minItems": 2
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Charspan"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "page_no",
+          "bbox",
+          "coord_origin",
+          "charspan"
+        ],
+        "title": "Geometry"
+      },
+      "HTTPValidationError": {
+        "properties": {
+          "detail": {
+            "items": {
+              "$ref": "#/components/schemas/ValidationError"
+            },
+            "type": "array",
+            "title": "Detail"
+          }
+        },
+        "type": "object",
+        "title": "HTTPValidationError"
+      },
+      "Item": {
+        "properties": {
+          "ref": {
+            "type": "string",
+            "title": "Ref"
+          },
+          "type": {
+            "type": "string",
+            "title": "Type"
+          },
+          "source_class": {
+            "type": "string",
+            "title": "Source Class"
+          },
+          "label": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Label"
+          },
+          "parent_ref": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Parent Ref"
+          },
+          "children_refs": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Children Refs"
+          },
+          "locations": {
+            "items": {
+              "$ref": "#/components/schemas/Geometry"
+            },
+            "type": "array",
+            "title": "Locations"
+          },
+          "original_text": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Original Text"
+          },
+          "content_for_embedding": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Content For Embedding"
+          },
+          "content_for_llm": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Content For Llm"
+          },
+          "caption": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Caption"
+          },
+          "description": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Description"
+          },
+          "ocr_text": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ocr Text"
+          },
+          "classification": {
+            "$ref": "#/components/schemas/JsonValue"
+          },
+          "data": {
+            "additionalProperties": {
+              "$ref": "#/components/schemas/JsonValue"
+            },
+            "type": "object",
+            "title": "Data"
+          },
+          "models": {
+            "items": {
+              "additionalProperties": {
+                "$ref": "#/components/schemas/JsonValue"
+              },
+              "type": "object"
+            },
+            "type": "array",
+            "title": "Models"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "ref",
+          "type",
+          "source_class",
+          "label",
+          "parent_ref",
+          "children_refs",
+          "locations",
+          "original_text",
+          "content_for_embedding",
+          "content_for_llm",
+          "caption",
+          "description",
+          "ocr_text",
+          "classification",
+          "data",
+          "models"
+        ],
+        "title": "Item"
+      },
+      "Job": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id"
+          },
+          "kind": {
+            "type": "string",
+            "enum": [
+              "document",
+              "batch",
+              "runtime"
+            ],
+            "title": "Kind"
+          },
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "document_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Document Id"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "queued",
+              "running",
+              "succeeded",
+              "failed",
+              "cancelled"
+            ],
+            "title": "Status",
+            "default": "queued"
+          },
+          "stop_requested": {
+            "type": "boolean",
+            "title": "Stop Requested",
+            "default": false
+          },
+          "stage": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Stage"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "detail": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Detail"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          },
+          "started_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Started At"
+          },
+          "finished_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Finished At"
+          },
+          "error": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error"
+          },
+          "events": {
+            "items": {
+              "$ref": "#/components/schemas/JobEvent"
+            },
+            "type": "array",
+            "title": "Events"
+          },
+          "inferences": {
+            "items": {
+              "additionalProperties": {
+                "$ref": "#/components/schemas/JsonValue"
+              },
+              "type": "object"
+            },
+            "type": "array",
+            "title": "Inferences"
+          },
+          "inference_count": {
+            "type": "integer",
+            "title": "Inference Count",
+            "default": 0
+          },
+          "stage_seconds": {
+            "additionalProperties": {
+              "type": "number"
+            },
+            "type": "object",
+            "title": "Stage Seconds"
+          },
+          "elapsed_seconds": {
+            "type": "number",
+            "title": "Elapsed Seconds",
+            "readOnly": true
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "id",
+          "kind",
+          "name",
+          "document_id",
+          "status",
+          "stop_requested",
+          "stage",
+          "detail",
+          "created_at",
+          "started_at",
+          "finished_at",
+          "error",
+          "events",
+          "inferences",
+          "inference_count",
+          "stage_seconds",
+          "elapsed_seconds"
+        ],
+        "title": "Job"
+      },
+      "JobEvent": {
+        "properties": {
+          "stage": {
+            "$ref": "#/components/schemas/Stage"
+          },
+          "detail": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Detail"
+          },
+          "at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "At"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "stage",
+          "detail",
+          "at"
+        ],
+        "title": "JobEvent"
+      },
+      "JsonValue": {},
+      "ModelCategory": {
+        "type": "string",
+        "enum": [
+          "layout",
+          "ocr",
+          "picture_classifier",
+          "vlm"
+        ],
+        "title": "ModelCategory"
+      },
+      "ModelOption": {
+        "properties": {
+          "category": {
+            "$ref": "#/components/schemas/ModelCategory"
+          },
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "prepared": {
+            "type": "boolean",
+            "title": "Prepared"
+          },
+          "defaults": {
+            "additionalProperties": {
+              "$ref": "#/components/schemas/JsonValue"
+            },
+            "type": "object",
+            "title": "Defaults"
+          },
+          "settings_schema": {
+            "additionalProperties": {
+              "$ref": "#/components/schemas/JsonValue"
+            },
+            "type": "object",
+            "title": "Settings Schema"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "category",
+          "name",
+          "prepared",
+          "defaults",
+          "settings_schema"
+        ],
+        "title": "ModelOption"
+      },
+      "ModelSelection-Input": {
+        "properties": {
+          "name": {
+            "type": "string",
+            "minLength": 1,
+            "title": "Name"
+          },
+          "device": {
+            "type": "string",
+            "pattern": "^(cpu|mps|cuda(?::[0-9]+)?|xpu(?::[0-9]+)?)$",
+            "title": "Device",
+            "default": "cpu"
+          },
+          "settings": {
+            "additionalProperties": {
+              "$ref": "#/components/schemas/JsonValue"
+            },
+            "type": "object",
+            "title": "Settings"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "name"
+        ],
+        "title": "ModelSelection"
+      },
+      "ModelSelection-Output": {
+        "properties": {
+          "name": {
+            "type": "string",
+            "minLength": 1,
+            "title": "Name"
+          },
+          "device": {
+            "type": "string",
+            "pattern": "^(cpu|mps|cuda(?::[0-9]+)?|xpu(?::[0-9]+)?)$",
+            "title": "Device",
+            "default": "cpu"
+          },
+          "settings": {
+            "additionalProperties": {
+              "$ref": "#/components/schemas/JsonValue"
+            },
+            "type": "object",
+            "title": "Settings"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "name",
+          "device",
+          "settings"
+        ],
+        "title": "ModelSelection"
+      },
+      "RecursiveChunking-Input": {
+        "properties": {
+          "kind": {
+            "type": "string",
+            "const": "recursive",
+            "title": "Kind",
+            "default": "recursive"
+          },
+          "chunk_size": {
+            "type": "integer",
+            "maximum": 100000.0,
+            "minimum": 1.0,
+            "title": "Chunk Size",
+            "default": 512
+          },
+          "min_characters_per_chunk": {
+            "type": "integer",
+            "minimum": 1.0,
+            "title": "Min Characters Per Chunk",
+            "default": 24
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "title": "RecursiveChunking"
+      },
+      "RecursiveChunking-Output": {
+        "properties": {
+          "kind": {
+            "type": "string",
+            "const": "recursive",
+            "title": "Kind",
+            "default": "recursive"
+          },
+          "chunk_size": {
+            "type": "integer",
+            "maximum": 100000.0,
+            "minimum": 1.0,
+            "title": "Chunk Size",
+            "default": 512
+          },
+          "min_characters_per_chunk": {
+            "type": "integer",
+            "minimum": 1.0,
+            "title": "Min Characters Per Chunk",
+            "default": 24
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "kind",
+          "chunk_size",
+          "min_characters_per_chunk"
+        ],
+        "title": "RecursiveChunking"
+      },
+      "Result": {
+        "properties": {
+          "document_id": {
+            "type": "string",
+            "title": "Document Id"
+          },
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/Item"
+            },
+            "type": "array",
+            "title": "Items"
+          },
+          "chunks": {
+            "items": {
+              "$ref": "#/components/schemas/ChunkView"
+            },
+            "type": "array",
+            "title": "Chunks"
+          },
+          "markdown": {
+            "type": "string",
+            "title": "Markdown"
+          },
+          "notices": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Notices",
+            "default": []
+          },
+          "extraction_regions": {
+            "items": {
+              "additionalProperties": {
+                "$ref": "#/components/schemas/JsonValue"
+              },
+              "type": "object"
+            },
+            "type": "array",
+            "title": "Extraction Regions"
+          },
+          "quality": {
+            "additionalProperties": {
+              "$ref": "#/components/schemas/JsonValue"
+            },
+            "type": "object",
+            "title": "Quality"
+          },
+          "manifest": {
+            "additionalProperties": {
+              "$ref": "#/components/schemas/JsonValue"
+            },
+            "type": "object",
+            "title": "Manifest"
+          },
+          "metrics": {
+            "additionalProperties": {
+              "$ref": "#/components/schemas/JsonValue"
+            },
+            "type": "object",
+            "title": "Metrics"
+          },
+          "index_records": {
+            "items": {
+              "additionalProperties": {
+                "$ref": "#/components/schemas/JsonValue"
+              },
+              "type": "object"
+            },
+            "type": "array",
+            "title": "Index Records"
+          },
+          "document_path": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Document Path"
+          },
+          "assets": {
+            "items": {
+              "$ref": "#/components/schemas/Asset"
+            },
+            "type": "array",
+            "title": "Assets"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "document_id",
+          "items",
+          "chunks",
+          "markdown",
+          "notices",
+          "extraction_regions",
+          "quality",
+          "manifest",
+          "metrics",
+          "index_records",
+          "document_path",
+          "assets"
+        ],
+        "title": "Result"
+      },
+      "RuntimeConfiguration-Input": {
+        "properties": {
+          "layout": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ModelSelection-Input"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "picture_classifier": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ModelSelection-Input"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "ocr": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ModelSelection-Input"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "vlm": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ModelSelection-Input"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "chunking": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/TokenChunking-Input"
+              },
+              {
+                "$ref": "#/components/schemas/SentenceChunking-Input"
+              },
+              {
+                "$ref": "#/components/schemas/RecursiveChunking-Input"
+              },
+              {
+                "$ref": "#/components/schemas/StructuralChunking-Input"
+              }
+            ],
+            "title": "Chunking",
+            "discriminator": {
+              "propertyName": "kind",
+              "mapping": {
+                "recursive": "#/components/schemas/RecursiveChunking-Input",
+                "sentence": "#/components/schemas/SentenceChunking-Input",
+                "structural": "#/components/schemas/StructuralChunking-Input",
+                "token": "#/components/schemas/TokenChunking-Input"
+              }
+            }
+          },
+          "enrichment": {
+            "$ref": "#/components/schemas/EnrichmentSelection-Input"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "title": "RuntimeConfiguration"
+      },
+      "RuntimeConfiguration-Output": {
+        "properties": {
+          "layout": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ModelSelection-Output"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "picture_classifier": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ModelSelection-Output"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "ocr": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ModelSelection-Output"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "vlm": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ModelSelection-Output"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "chunking": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/TokenChunking-Output"
+              },
+              {
+                "$ref": "#/components/schemas/SentenceChunking-Output"
+              },
+              {
+                "$ref": "#/components/schemas/RecursiveChunking-Output"
+              },
+              {
+                "$ref": "#/components/schemas/StructuralChunking-Output"
+              }
+            ],
+            "title": "Chunking",
+            "discriminator": {
+              "propertyName": "kind",
+              "mapping": {
+                "recursive": "#/components/schemas/RecursiveChunking-Output",
+                "sentence": "#/components/schemas/SentenceChunking-Output",
+                "structural": "#/components/schemas/StructuralChunking-Output",
+                "token": "#/components/schemas/TokenChunking-Output"
+              }
+            }
+          },
+          "enrichment": {
+            "$ref": "#/components/schemas/EnrichmentSelection-Output"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "layout",
+          "picture_classifier",
+          "ocr",
+          "vlm",
+          "chunking",
+          "enrichment"
+        ],
+        "title": "RuntimeConfiguration"
+      },
+      "RuntimeOptions": {
+        "properties": {
+          "models": {
+            "items": {
+              "$ref": "#/components/schemas/ModelOption"
+            },
+            "type": "array",
+            "title": "Models"
+          },
+          "devices": {
+            "items": {
+              "$ref": "#/components/schemas/DeviceOption"
+            },
+            "type": "array",
+            "title": "Devices"
+          },
+          "runtime": {
+            "$ref": "#/components/schemas/RuntimeStatus"
+          },
+          "defaults": {
+            "$ref": "#/components/schemas/RuntimeConfiguration-Output"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "models",
+          "devices",
+          "runtime",
+          "defaults"
+        ],
+        "title": "RuntimeOptions"
+      },
+      "RuntimeStatus": {
+        "properties": {
+          "status": {
+            "type": "string",
+            "enum": [
+              "unloaded",
+              "loading",
+              "loaded",
+              "unloading",
+              "error"
+            ],
+            "title": "Status",
+            "default": "unloaded"
+          },
+          "configuration": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/RuntimeConfiguration-Output"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "requested": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/RuntimeConfiguration-Output"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "error": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error"
+          },
+          "revision": {
+            "type": "integer",
+            "title": "Revision",
+            "default": 0
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "status",
+          "configuration",
+          "requested",
+          "error",
+          "revision"
+        ],
+        "title": "RuntimeStatus"
+      },
+      "SentenceChunking-Input": {
+        "properties": {
+          "kind": {
+            "type": "string",
+            "const": "sentence",
+            "title": "Kind",
+            "default": "sentence"
+          },
+          "chunk_size": {
+            "type": "integer",
+            "maximum": 100000.0,
+            "minimum": 1.0,
+            "title": "Chunk Size",
+            "default": 512
+          },
+          "chunk_overlap": {
+            "type": "integer",
+            "minimum": 0.0,
+            "title": "Chunk Overlap",
+            "default": 0
+          },
+          "min_sentences_per_chunk": {
+            "type": "integer",
+            "minimum": 1.0,
+            "title": "Min Sentences Per Chunk",
+            "default": 1
+          },
+          "min_characters_per_sentence": {
+            "type": "integer",
+            "minimum": 1.0,
+            "title": "Min Characters Per Sentence",
+            "default": 12
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "title": "SentenceChunking"
+      },
+      "SentenceChunking-Output": {
+        "properties": {
+          "kind": {
+            "type": "string",
+            "const": "sentence",
+            "title": "Kind",
+            "default": "sentence"
+          },
+          "chunk_size": {
+            "type": "integer",
+            "maximum": 100000.0,
+            "minimum": 1.0,
+            "title": "Chunk Size",
+            "default": 512
+          },
+          "chunk_overlap": {
+            "type": "integer",
+            "minimum": 0.0,
+            "title": "Chunk Overlap",
+            "default": 0
+          },
+          "min_sentences_per_chunk": {
+            "type": "integer",
+            "minimum": 1.0,
+            "title": "Min Sentences Per Chunk",
+            "default": 1
+          },
+          "min_characters_per_sentence": {
+            "type": "integer",
+            "minimum": 1.0,
+            "title": "Min Characters Per Sentence",
+            "default": 12
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "kind",
+          "chunk_size",
+          "chunk_overlap",
+          "min_sentences_per_chunk",
+          "min_characters_per_sentence"
+        ],
+        "title": "SentenceChunking"
+      },
+      "Settings": {
+        "properties": {
+          "pipeline_class": {
+            "type": "string",
+            "title": "Pipeline Class"
+          },
+          "configuration": {
+            "additionalProperties": {
+              "$ref": "#/components/schemas/JsonValue"
+            },
+            "type": "object",
+            "title": "Configuration"
+          },
+          "extractor": {
+            "$ref": "#/components/schemas/JsonValue"
+          },
+          "codecs": {
+            "$ref": "#/components/schemas/JsonValue"
+          },
+          "extraction_options": {
+            "$ref": "#/components/schemas/JsonValue"
+          },
+          "worker_count": {
+            "type": "integer",
+            "title": "Worker Count",
+            "default": 1
+          },
+          "cache_capacity": {
+            "type": "integer",
+            "title": "Cache Capacity"
+          },
+          "read_only": {
+            "type": "boolean",
+            "title": "Read Only",
+            "default": true
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "pipeline_class",
+          "configuration",
+          "extractor",
+          "codecs",
+          "extraction_options",
+          "worker_count",
+          "cache_capacity",
+          "read_only"
+        ],
+        "title": "Settings"
+      },
+      "SourceRoot": {
+        "properties": {
+          "root": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Root"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "root"
+        ],
+        "title": "SourceRoot"
+      },
+      "SourceRootSelection": {
+        "properties": {
+          "path": {
+            "type": "string",
+            "minLength": 1,
+            "title": "Path"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "path"
+        ],
+        "title": "SourceRootSelection"
+      },
+      "Stage": {
+        "type": "string",
+        "enum": [
+          "extraction",
+          "enrichment",
+          "classification",
+          "ocr",
+          "vlm",
+          "chunking",
+          "rendering",
+          "unloading",
+          "loading",
+          "configuration"
+        ],
+        "title": "Stage"
+      },
+      "Status": {
+        "type": "string",
+        "enum": [
+          "idle",
+          "queued",
+          "processing",
+          "ready",
+          "error"
+        ],
+        "title": "Status"
+      },
+      "StructuralChunking-Input": {
+        "properties": {
+          "kind": {
+            "type": "string",
+            "const": "structural",
+            "title": "Kind",
+            "default": "structural"
+          },
+          "chunk_size": {
+            "type": "integer",
+            "maximum": 512.0,
+            "minimum": 1.0,
+            "title": "Chunk Size",
+            "default": 512
+          },
+          "target_tokens": {
+            "type": "integer",
+            "maximum": 512.0,
+            "minimum": 1.0,
+            "title": "Target Tokens",
+            "default": 384
+          },
+          "min_tokens": {
+            "type": "integer",
+            "maximum": 512.0,
+            "minimum": 1.0,
+            "title": "Min Tokens",
+            "default": 128
+          },
+          "respect_page_boundaries": {
+            "type": "boolean",
+            "title": "Respect Page Boundaries",
+            "default": false
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "title": "StructuralChunking"
+      },
+      "StructuralChunking-Output": {
+        "properties": {
+          "kind": {
+            "type": "string",
+            "const": "structural",
+            "title": "Kind",
+            "default": "structural"
+          },
+          "chunk_size": {
+            "type": "integer",
+            "maximum": 512.0,
+            "minimum": 1.0,
+            "title": "Chunk Size",
+            "default": 512
+          },
+          "target_tokens": {
+            "type": "integer",
+            "maximum": 512.0,
+            "minimum": 1.0,
+            "title": "Target Tokens",
+            "default": 384
+          },
+          "min_tokens": {
+            "type": "integer",
+            "maximum": 512.0,
+            "minimum": 1.0,
+            "title": "Min Tokens",
+            "default": 128
+          },
+          "respect_page_boundaries": {
+            "type": "boolean",
+            "title": "Respect Page Boundaries",
+            "default": false
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "kind",
+          "chunk_size",
+          "target_tokens",
+          "min_tokens",
+          "respect_page_boundaries"
+        ],
+        "title": "StructuralChunking"
+      },
+      "TokenChunking-Input": {
+        "properties": {
+          "kind": {
+            "type": "string",
+            "const": "token",
+            "title": "Kind",
+            "default": "token"
+          },
+          "chunk_size": {
+            "type": "integer",
+            "maximum": 100000.0,
+            "minimum": 1.0,
+            "title": "Chunk Size",
+            "default": 512
+          },
+          "chunk_overlap": {
+            "type": "integer",
+            "minimum": 0.0,
+            "title": "Chunk Overlap",
+            "default": 0
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "title": "TokenChunking"
+      },
+      "TokenChunking-Output": {
+        "properties": {
+          "kind": {
+            "type": "string",
+            "const": "token",
+            "title": "Kind",
+            "default": "token"
+          },
+          "chunk_size": {
+            "type": "integer",
+            "maximum": 100000.0,
+            "minimum": 1.0,
+            "title": "Chunk Size",
+            "default": 512
+          },
+          "chunk_overlap": {
+            "type": "integer",
+            "minimum": 0.0,
+            "title": "Chunk Overlap",
+            "default": 0
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "kind",
+          "chunk_size",
+          "chunk_overlap"
+        ],
+        "title": "TokenChunking"
+      },
+      "ValidationError": {
+        "properties": {
+          "loc": {
+            "items": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "integer"
+                }
+              ]
+            },
+            "type": "array",
+            "title": "Location"
+          },
+          "msg": {
+            "type": "string",
+            "title": "Message"
+          },
+          "type": {
+            "type": "string",
+            "title": "Error Type"
+          },
+          "input": {
+            "title": "Input"
+          },
+          "ctx": {
+            "type": "object",
+            "title": "Context"
+          }
+        },
+        "type": "object",
+        "required": [
+          "loc",
+          "msg",
+          "type"
+        ],
+        "title": "ValidationError"
+      }
+    }
+  }
+}
