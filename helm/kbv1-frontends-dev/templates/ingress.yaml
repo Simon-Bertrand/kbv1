@@ -1,0 +1,57 @@
+{{- if .Values.ingress.enabled -}}
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: {{ include "kbv1-frontends.fullname" . }}-ingress
+  labels:
+    {{- include "kbv1-frontends.labels" . | nindent 4 }}
+  {{- with .Values.ingress.annotations }}
+  annotations:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+spec:
+  {{- if .Values.ingress.className }}
+  ingressClassName: {{ .Values.ingress.className }}
+  {{- end }}
+  {{- if .Values.ingress.tls }}
+  tls:
+    {{- toYaml .Values.ingress.tls | nindent 4 }}
+  {{- end }}
+  rules:
+    {{- if .Values.webui.enabled }}
+    - host: {{ .Values.ingress.hosts.webui.host | quote }}
+      http:
+        paths:
+          - path: {{ .Values.ingress.hosts.webui.path }}
+            pathType: {{ .Values.ingress.hosts.webui.pathType }}
+            backend:
+              service:
+                name: {{ include "kbv1-frontends.fullname" . }}-webui
+                port:
+                  number: {{ .Values.webui.service.port }}
+    {{- end }}
+    {{- if .Values.kmFrontend.enabled }}
+    - host: {{ .Values.ingress.hosts.kmFrontend.host | quote }}
+      http:
+        paths:
+          - path: {{ .Values.ingress.hosts.kmFrontend.path }}
+            pathType: {{ .Values.ingress.hosts.kmFrontend.pathType }}
+            backend:
+              service:
+                name: {{ include "kbv1-frontends.fullname" . }}-km-frontend
+                port:
+                  number: {{ .Values.kmFrontend.service.port }}
+    {{- end }}
+    {{- if .Values.pdfparseStudio.enabled }}
+    - host: {{ .Values.ingress.hosts.pdfparseStudio.host | quote }}
+      http:
+        paths:
+          - path: {{ .Values.ingress.hosts.pdfparseStudio.path }}
+            pathType: {{ .Values.ingress.hosts.pdfparseStudio.pathType }}
+            backend:
+              service:
+                name: {{ include "kbv1-frontends.fullname" . }}-pdfparse-studio
+                port:
+                  number: {{ .Values.pdfparseStudio.service.port }}
+    {{- end }}
+{{- end }}

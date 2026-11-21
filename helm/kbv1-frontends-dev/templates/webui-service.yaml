@@ -1,0 +1,22 @@
+{{- if .Values.webui.enabled }}
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "kbv1-frontends.fullname" . }}-webui
+  labels:
+    {{- include "kbv1-frontends.labels" . | nindent 4 }}
+    app.kubernetes.io/component: webui
+spec:
+  type: {{ .Values.webui.service.type }}
+  ports:
+    - port: {{ .Values.webui.service.port }}
+      targetPort: 4173
+      protocol: TCP
+      name: http
+      {{- if and (eq .Values.webui.service.type "NodePort") .Values.webui.service.nodePort }}
+      nodePort: {{ .Values.webui.service.nodePort }}
+      {{- end }}
+  selector:
+    {{- include "kbv1-frontends.selectorLabels" . | nindent 4 }}
+    app.kubernetes.io/component: webui
+{{- end }}

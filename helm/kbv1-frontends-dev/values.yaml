@@ -1,0 +1,214 @@
+global:
+  environment: dev
+  domain: kb.local
+
+# ------------------------------------------------------------------------------
+# KM FRONTEND (Console RAG / Traces / Évaluations / Gestion Documentaire)
+# ------------------------------------------------------------------------------
+kmFrontend:
+  enabled: true
+  replicaCount: 1
+
+  image:
+    repository: kbv1/km-frontend
+    tag: local
+    pullPolicy: IfNotPresent
+
+  service:
+    type: ClusterIP
+    port: 8088
+    nodePort: 30088
+
+  env:
+    ragUrl: "http://km-api:8000"
+    kbUrl: "http://km-api:8000"
+    indexUrl: "http://indexer:8011"
+    fileserverUrl: "http://fileserver:8080"
+    agentUrl: "http://km-agent:8086"
+    pdfparsePort: "8000"
+    consoleUser: "admin"
+    fileserverDevUser: "dev"
+
+  resources:
+    limits:
+      cpu: 500m
+      memory: 512Mi
+    requests:
+      cpu: 100m
+      memory: 128Mi
+
+  probes:
+    liveness:
+      httpGet:
+        path: /health
+        port: 8088
+      initialDelaySeconds: 10
+      periodSeconds: 15
+    readiness:
+      httpGet:
+        path: /health
+        port: 8088
+      initialDelaySeconds: 5
+      periodSeconds: 10
+
+# ------------------------------------------------------------------------------
+# PDFPARSE STUDIO (Studio d'extraction et de visualisation PDF)
+# ------------------------------------------------------------------------------
+pdfparseStudio:
+  enabled: true
+  replicaCount: 1
+
+  image:
+    repository: kbv1/pdfparse
+    tag: local
+    pullPolicy: IfNotPresent
+
+  service:
+    type: ClusterIP
+    port: 8000
+    nodePort: 30080
+
+  env:
+    allowedHosts: "*"
+    adminUser: "studio"
+    modelsDir: "/models"
+    dataDir: "/data"
+
+  gpu:
+    enabled: false
+    count: 1
+
+  # Volumes pour données, modèles et assets en environnement dev
+  persistence:
+    data:
+      enabled: false
+      type: emptyDir # emptyDir | hostPath | pvc
+      hostPath: /home/dev/dev/kbv1/data
+      pvcName: ""
+      mountPath: /data
+    models:
+      enabled: false
+      type: emptyDir # emptyDir | hostPath | pvc
+      hostPath: /home/dev/dev/kbv1/models
+      pvcName: ""
+      mountPath: /models
+    assets:
+      type: emptyDir # emptyDir | pvc
+      mountPath: /assets
+      pvcName: ""
+
+  resources:
+    limits:
+      cpu: 2000m
+      memory: 4Gi
+    requests:
+      cpu: 500m
+      memory: 1Gi
+
+  probes:
+    liveness:
+      httpGet:
+        path: /health
+        port: 8000
+      initialDelaySeconds: 15
+      periodSeconds: 20
+    readiness:
+      httpGet:
+        path: /health
+        port: 8000
+      initialDelaySeconds: 10
+      periodSeconds: 10
+
+# ------------------------------------------------------------------------------
+# WEBUI (Chatbot conversationnel et recherche documentaire RAG)
+# ------------------------------------------------------------------------------
+webui:
+  enabled: true
+  replicaCount: 1
+
+  image:
+    repository: kbv1/webui
+    tag: local
+    pullPolicy: IfNotPresent
+
+  service:
+    type: ClusterIP
+    port: 3000
+    targetPort: 4173
+    nodePort: 30000
+
+  env:
+    nodeEnv: "production"
+    chatSeconds: "180"
+    searchMode: "hybrid"
+    databaseUrl: "postgresql://webui-user:dev-webui-password@postgres:5432/knowledgebase"
+    kmApiUrl: "http://km-api:8000"
+    agentUrl: "http://km-agent:8086"
+    rerankerUrl: "http://reranker:8002"
+    fileserverInternalUrl: "http://fileserver:8080"
+    fileserverPublicUrl: "http://fileserver.kb.local"
+    authUrl: "http://webui.kb.local"
+    authTrustHost: "true"
+    trustProxy: "true"
+
+  resources:
+    limits:
+      cpu: 1000m
+      memory: 1Gi
+    requests:
+      cpu: 200m
+      memory: 256Mi
+
+  probes:
+    liveness:
+      httpGet:
+        path: /ready
+        port: 4173
+      initialDelaySeconds: 15
+      periodSeconds: 20
+    readiness:
+      httpGet:
+        path: /ready
+        port: 4173
+      initialDelaySeconds: 10
+      periodSeconds: 10
+
+# ------------------------------------------------------------------------------
+# SECRETS (Valeurs de développement par défaut)
+# ------------------------------------------------------------------------------
+secrets:
+  create: true
+  existingSecret: ""
+  kmConsolePassword: "" # Laisser vide pour désactiver le Basic Auth en dev
+  fileserverDevPassword: "dev"
+  pdfparseAdminPassword: "dev-studio-password"
+  webuiAuthSecret: "dev-secret-super-secure-at-least-32-chars-long"
+  fileserverJwtSecret: "dev-fileserver-jwt-secret-at-least-32-chars"
+  kmApiToken: ""
+  kmIndexerToken: ""
+  kmAgentToken: ""
+
+# ------------------------------------------------------------------------------
+# INGRESS (Accès unifié via sous-domaines de développement)
+# ------------------------------------------------------------------------------
+ingress:
+  enabled: true
+  className: "nginx"
+  annotations:
+    nginx.ingress.kubernetes.io/proxy-body-size: "100m"
+    nginx.ingress.kubernetes.io/proxy-read-timeout: "600"
+    nginx.ingress.kubernetes.io/proxy-send-timeout: "600"
+  hosts:
+    webui:
+      host: "webui.kb.local"
+      path: /
+      pathType: Prefix
+    kmFrontend:
+      host: "km.kb.local"
+      path: /
+      pathType: Prefix
+    pdfparseStudio:
+      host: "studio.kb.local"
+      path: /
+      pathType: Prefix
+  tls: []
