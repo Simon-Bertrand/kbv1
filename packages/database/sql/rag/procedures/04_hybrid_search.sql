@@ -38,15 +38,16 @@ BEGIN
     RETURN QUERY
     WITH lexical AS MATERIALIZED (
         SELECT c.chunk_id,
-            coalesce(c.record->>'embedding_text', c.record->>'text', '')
+            coalesce(c.record->>'text', '')
                 OPERATOR(rag.<@>) rag.to_bm25query(p_query, 'rag.chunks_bm25_idx') AS distance
         FROM rag.chunks c JOIN rag.documents d USING (document_id)
         WHERE p_mode <> 'semantic'
+          AND rag.has_physical_page(c.record)
           AND (p_document_ids IS NULL OR c.document_id = ANY(p_document_ids))
           AND (p_metadata IS NULL OR d.metadata @> p_metadata)
           AND (v_type_ids IS NULL OR d.type_document_id = ANY(v_type_ids))
           AND (v_date_ids IS NULL OR d.document_id = ANY(v_date_ids))
-        ORDER BY coalesce(c.record->>'embedding_text', c.record->>'text', '')
+        ORDER BY coalesce(c.record->>'text', '')
             OPERATOR(rag.<@>) rag.to_bm25query(p_query, 'rag.chunks_bm25_idx')
         LIMIT p_candidates
     ), semantic AS MATERIALIZED (

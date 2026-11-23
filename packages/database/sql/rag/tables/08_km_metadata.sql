@@ -47,15 +47,10 @@ CREATE TABLE IF NOT EXISTS rag.km_linked_documents (
     raw jsonb NOT NULL,
     PRIMARY KEY (version_node_id, ordinal)
 );
-CREATE TABLE IF NOT EXISTS rag.km_document_text (
-    document_id text PRIMARY KEY REFERENCES rag.documents ON DELETE CASCADE,
-    markdown text NOT NULL,
-    content_hash text NOT NULL
-);
 CREATE TABLE IF NOT EXISTS rag.km_search_units (
     unit_id text PRIMARY KEY,
     document_id text NOT NULL REFERENCES rag.documents ON DELETE CASCADE,
-    kind text NOT NULL CHECK (kind IN ('chunk','markdown')),
+    kind text NOT NULL CHECK (kind = 'chunk'),
     body text NOT NULL,
     record jsonb NOT NULL,
     CHECK (record->>'id' IS NOT DISTINCT FROM unit_id)

@@ -3,6 +3,8 @@ WORKDIR /app
 COPY . .
 RUN sha256sum -c /opt/offline/webui.sha256
 ENV NEXT_TELEMETRY_DISABLED=1
+ARG WEBUI_GIT_COMMIT
+ARG WEBUI_GIT_BRANCH
 RUN npm run build
 
 FROM knowledgebase/base-webui:local

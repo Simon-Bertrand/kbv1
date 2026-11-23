@@ -1,0 +1,22 @@
+# Configuration du site dev à fournir via la variable GitLab fichier KUBE_DEV_VALUES.
+domain_name: kb.example.test
+global:
+  imagePullSecrets:
+    - name: gitlab-registry
+secrets:
+  create: false
+  existingSecret: kbv1-runtime
+sharedStorage:
+  corpus:
+    type: pvc
+    pvcName: kbv1-corpus
+  models:
+    type: pvc
+    pvcName: kbv1-models
+  sourceVersions:
+    type: pvc
+    pvcName: kbv1-source-versions
+postgres:
+  persistence:
+    type: pvc
+    pvcName: kbv1-postgres-data

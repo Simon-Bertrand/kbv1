@@ -1,0 +1,125 @@
+{{- if .Values.indexer.enabled }}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "kbv1.fullname" . }}-indexer
+  labels:
+    {{- include "kbv1.labels" . | nindent 4 }}
+    app.kubernetes.io/component: indexer
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      {{- include "kbv1.selectorLabels" . | nindent 6 }}
+      app.kubernetes.io/component: indexer
+  template:
+    metadata:
+      labels:
+        {{- include "kbv1.selectorLabels" . | nindent 8 }}
+        app.kubernetes.io/component: indexer
+    spec:
+      {{- with .Values.global.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      initContainers:
+        - name: state-init
+          image: {{ include "kbv1.image" (dict "root" . "image" .Values.indexer.image) | quote }}
+          imagePullPolicy: {{ .Values.indexer.image.pullPolicy }}
+          securityContext:
+            runAsUser: 0
+          command:
+            - sh
+            - -ec
+            - chown -hR 1000:10001 /state
+          volumeMounts:
+            - name: indexer-state
+              mountPath: /state
+      securityContext:
+        fsGroup: 10001
+      containers:
+        - name: indexer
+          image: {{ include "kbv1.image" (dict "root" . "image" .Values.indexer.image) | quote }}
+          imagePullPolicy: {{ .Values.indexer.image.pullPolicy }}
+          command:
+            - python
+            - -m
+            - uvicorn
+            - km_embeddings.index_service:app
+            - --host
+            - 0.0.0.0
+            - --port
+            - "8011"
+            - --workers
+            - "1"
+            - --no-proxy-headers
+          ports:
+            - name: http
+              containerPort: 8011
+              protocol: TCP
+          env:
+            - name: KB_ENV
+              value: {{ .Values.global.environment | default "dev" | quote }}
+            - name: ENCODER_URL
+              value: {{ printf "http://%s-encoder:8001" (include "kbv1.fullname" .) | quote }}
+            - name: KB_DATA_DIR
+              value: {{ .Values.indexer.env.dataDir | quote }}
+            - name: KB_UPSTREAM_ROOT
+              value: {{ .Values.indexer.env.upstreamRoot | quote }}
+            - name: SOURCE_VERSIONS_DIR
+              value: {{ .Values.indexer.env.sourceVersionsDir | quote }}
+            - name: KM_SOURCE_ARCHIVE_URL
+              value: {{ printf "http://%s-km-api:8000/internal/source-versions" (include "kbv1.fullname" .) | quote }}
+            - name: KM_STATE_DIR
+              value: {{ .Values.indexer.env.stateDir | quote }}
+            - name: KB_KM_SCHEMA
+              value: {{ .Values.indexer.env.kmSchema | quote }}
+            - name: KB_DATABASE_URL
+              value: {{ printf "postgresql://km_writer@%s-postgres:5432/%s" (include "kbv1.fullname" .) .Values.postgres.env.db | quote }}
+            - name: PGPASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "kbv1.secretName" . }}
+                  key: POSTGRES_KM_WRITER_PASSWORD
+            - name: KM_INDEXER_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "kbv1.secretName" . }}
+                  key: KM_INDEXER_TOKEN
+          volumeMounts:
+            - name: corpus-storage
+              mountPath: {{ .Values.indexer.env.dataDir }}
+            - name: indexer-state
+              mountPath: {{ .Values.indexer.env.stateDir }}
+            - name: source-versions
+              mountPath: {{ .Values.indexer.env.sourceVersionsDir }}
+              readOnly: true
+          resources:
+            {{- toYaml .Values.indexer.resources | nindent 12 }}
+      volumes:
+        - name: corpus-storage
+          {{- if eq .Values.sharedStorage.corpus.type "pvc" }}
+          persistentVolumeClaim:
+            claimName: {{ if .Values.sharedStorage.corpus.pvcName }}{{ .Values.sharedStorage.corpus.pvcName }}{{ else }}{{ include "kbv1.fullname" . }}-corpus{{ end }}
+          {{- else if eq .Values.sharedStorage.corpus.type "hostPath" }}
+          hostPath:
+            path: {{ .Values.sharedStorage.corpus.hostPath }}
+            type: Directory
+          {{- else }}
+          emptyDir: {}
+          {{- end }}
+        - name: indexer-state
+          {{- if eq .Values.sharedStorage.indexerState.type "pvc" }}
+          persistentVolumeClaim:
+            claimName: {{ if .Values.sharedStorage.indexerState.pvcName }}{{ .Values.sharedStorage.indexerState.pvcName }}{{ else }}{{ include "kbv1.fullname" . }}-indexer-state{{ end }}
+          {{- else }}
+          emptyDir: {}
+          {{- end }}
+        - name: source-versions
+          {{- if eq .Values.sharedStorage.sourceVersions.type "pvc" }}
+          persistentVolumeClaim:
+            claimName: {{ if .Values.sharedStorage.sourceVersions.pvcName }}{{ .Values.sharedStorage.sourceVersions.pvcName }}{{ else }}{{ include "kbv1.fullname" . }}-source-versions{{ end }}
+          {{- else }}
+          emptyDir: {}
+          {{- end }}
+{{- end }}

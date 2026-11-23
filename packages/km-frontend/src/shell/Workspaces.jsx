@@ -1,14 +1,24 @@
 import React, { Suspense, lazy, useEffect, useState } from "react";
+import { initialDestination } from "./navigation.js";
 
 const Sources = lazy(() => import("../features/documents/Sources.jsx"));
 const Atlas = lazy(() => import("../pages/atlas/Embedded.jsx"));
 const Viewer = lazy(() => import("../pages/viewer/Embedded.jsx"));
+const Ingestion = lazy(() => import("../features/ingestion/IngestionView.jsx"));
 
 export default function Workspaces() {
-  const [opened, setOpened] = useState({});
+  const [opened, setOpened] = useState(() => {
+    if (typeof window !== "undefined") {
+      const dest = initialDestination(window.location);
+      if (["sources", "atlas", "viewer", "ingestion"].includes(dest.view)) {
+        return { [dest.view]: true };
+      }
+    }
+    return {};
+  });
   useEffect(() => {
     const onView = (e) => {
-      if (["sources", "atlas", "viewer"].includes(e.detail)) {
+      if (["sources", "atlas", "viewer", "ingestion"].includes(e.detail)) {
         setOpened((previous) =>
           previous[e.detail] ? previous : { ...previous, [e.detail]: true },
         );
@@ -40,6 +50,15 @@ export default function Workspaces() {
       >
         <Suspense fallback={<p role="status">Chargement des pages…</p>}>
           {opened.viewer && <Viewer />}
+        </Suspense>
+      </section>
+      <section
+        id="ingestion"
+        className="view integrated-view"
+        aria-label="Orchestrateur Ingestion"
+      >
+        <Suspense fallback={<p role="status">Chargement de l'ingestion…</p>}>
+          {opened.ingestion && <Ingestion />}
         </Suspense>
       </section>
     </>

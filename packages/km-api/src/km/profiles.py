@@ -29,14 +29,11 @@ def register(conn,metadata,fingerprint,requested=None):
     conn.execute(sql_client.INITIALIZE_ACTIVE_PROFILE,(row['profile'],))
     return row
 
-def snapshot(conn,profile,bundle,vectors,hashes,*,km,original_name,type_document_id):
+def snapshot(conn,profile,bundle,vectors,hashes,*,original_name,type_document_id):
     doc=bundle['document_id']
     conn.execute(sql_client.UPSERT_PROFILE_DOCUMENT,
         (profile,doc,bundle['filepath'],Jsonb(bundle.get('metadata',{})),original_name,type_document_id))
     units=[('chunk',r['id'],r) for r in bundle['chunks']]+[('visual',r['id'],r) for r in bundle['visuals']]
-    if km:
-        units += [('markdown',r['unit_id'],r['record']) for r in conn.execute(
-            sql_client.MARKDOWN_RECORDS,(doc,))]
     unit_ids = [ident for _,ident,_ in units]
     if conn.execute(sql_client.FOREIGN_PROFILE_UNIT,
         (profile,unit_ids,doc)).fetchone():

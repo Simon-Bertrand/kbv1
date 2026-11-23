@@ -18,7 +18,8 @@ test('sidebar width is adjustable, persistent and bounded by the available viewp
     return;
   }
   const before = (await page.locator('#sidebar').boundingBox())!.width;
-  expect(before).toBe(224);
+  expect(before).toBe(296);
+  await expect(page.locator('.brand-logo')).toHaveCSS('width', '226px');
   const handle = (await separator.boundingBox())!;
   await page.mouse.move(handle.x + handle.width / 2, 250);
   await page.mouse.down();
@@ -44,7 +45,7 @@ test('sidebar width is adjustable, persistent and bounded by the available viewp
   await page.keyboard.press('Home');
   await expect(separator).toHaveAttribute('aria-valuenow', '200');
   await page.locator('#sidebar-size-reset').click();
-  await expect(separator).toHaveAttribute('aria-valuenow', '224');
+  await expect(separator).toHaveAttribute('aria-valuenow', '296');
   const list = page.locator('#conversation-list');
   expect(await list.evaluate(element => element.scrollWidth <= element.clientWidth)).toBeTruthy();
   await expect(page.locator('.history-item span').first()).toHaveCSS('text-overflow', 'ellipsis');

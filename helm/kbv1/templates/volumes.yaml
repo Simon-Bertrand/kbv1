@@ -1,0 +1,65 @@
+{{- if and (eq .Values.sharedStorage.sourceVersions.type "pvc") (not .Values.sharedStorage.sourceVersions.pvcName) }}
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: {{ include "kbv1.fullname" . }}-source-versions
+  labels:
+    {{- include "kbv1.labels" . | nindent 4 }}
+spec:
+  {{- with .Values.sharedStorage.sourceVersions.storageClassName }}
+  storageClassName: {{ . | quote }}
+  {{- end }}
+  accessModes:
+    - ReadWriteMany
+  resources:
+    requests:
+      storage: {{ .Values.sharedStorage.sourceVersions.size }}
+---
+{{- end }}
+{{- if and (eq .Values.sharedStorage.indexerState.type "pvc") (not .Values.sharedStorage.indexerState.pvcName) }}
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: {{ include "kbv1.fullname" . }}-indexer-state
+  labels:
+    {{- include "kbv1.labels" . | nindent 4 }}
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: {{ .Values.sharedStorage.indexerState.size }}
+---
+{{- end }}
+{{- if and (eq .Values.sharedStorage.pdfparseAssets.type "pvc") (not .Values.sharedStorage.pdfparseAssets.pvcName) }}
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: {{ include "kbv1.fullname" . }}-pdfparse-assets
+  labels:
+    {{- include "kbv1.labels" . | nindent 4 }}
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: {{ .Values.sharedStorage.pdfparseAssets.size }}
+---
+{{- end }}
+{{- if and (eq .Values.postgres.persistence.type "pvc") (not .Values.postgres.persistence.pvcName) }}
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: {{ include "kbv1.fullname" . }}-postgres-data
+  labels:
+    {{- include "kbv1.labels" . | nindent 4 }}
+spec:
+  {{- with .Values.postgres.persistence.storageClassName }}
+  storageClassName: {{ . | quote }}
+  {{- end }}
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: {{ .Values.postgres.persistence.size }}
+{{- end }}

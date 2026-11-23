@@ -1,4 +1,5 @@
 import type { Source } from '../chat/types';
+export const searchPdfOpenQuery = '?open=1';
 export const searchSourcePrefix = '/api/search/sources/';
 export const searchSourceToken = /^(d[a-f0-9]{32})(?:\.(c[a-f0-9]{32}|\d{13}))?\.([a-f0-9]{64})$/;
 export type SearchMode = 'hybrid' | 'semantic' | 'lexical';
@@ -18,5 +19,5 @@ export interface DocumentType {
   perimeter_code: string;
   perimeter_label: string;
 }
-export interface SearchHit { documentId: string; score: number; source: Source }
+export interface SearchHit { documentId: string; score: number; passageId?: string; startOffset?: number; pdfOpenUrl?: string; source: Source }
 export interface SearchResponse { results: SearchHit[] }

@@ -14,7 +14,6 @@ SET hnsw.iterative_scan=strict_order
 SET hnsw.ef_search=100
 AS $$
 DECLARE
- v_query tsquery;
  v_type_ids bigint[];
     v_date_ids text[];
  v_exact_limit CONSTANT integer := 2048;
@@ -29,9 +28,6 @@ BEGIN
  END IF;
  IF p_mode<>'lexical' AND (p_text_query IS NULL OR rag.vector_dims(p_text_query)<>1024 OR rag.vector_norm(p_text_query)=0) THEN
   RAISE EXCEPTION 'Expected text vector 1024' USING ERRCODE='22023';
- END IF;
- IF p_mode<>'semantic' THEN
-  v_query := websearch_to_tsquery('simple',p_query);
  END IF;
  v_type_ids := rag.document_type_scope(p_type_document_ids, p_perimeter_code, p_type_document_labels);
     v_date_ids := rag.date_document_scope(p_date_filters);
@@ -50,19 +46,19 @@ BEGIN
  END IF;
  RETURN QUERY
  WITH lexical AS MATERIALIZED (
-  SELECT u.unit_id,ts_rank_cd(u.lexical,v_query) AS relevance
+  SELECT u.unit_id,coalesce(u.record->>'text','') OPERATOR(rag.<@>) rag.to_bm25query(p_query,'rag.km_profile_units_bm25_idx') AS distance
   FROM rag.km_profile_units u JOIN rag.km_profile_documents d USING(profile,document_id)
-  WHERE u.profile=p_profile AND u.kind IN ('chunk','markdown') AND p_mode<>'semantic'
-   AND u.lexical @@ v_query
+  WHERE u.profile=p_profile AND u.kind = 'chunk' AND p_mode<>'semantic'
+   AND rag.has_physical_page(u.record)
    AND (p_metadata IS NULL OR d.metadata @> p_metadata)
           AND (v_type_ids IS NULL OR d.type_document_id = ANY(v_type_ids))
           AND (v_date_ids IS NULL OR d.document_id = ANY(v_date_ids))
-  ORDER BY relevance DESC,u.unit_id LIMIT p_candidates
+  ORDER BY distance LIMIT p_candidates
  ), exact_vectors AS MATERIALIZED (
   SELECT e.chunk_id,e.embedding
   FROM rag.km_profile_documents d JOIN rag.km_profile_units u USING(profile,document_id)
   JOIN rag.km_text_embeddings e ON e.profile=u.profile AND e.chunk_id=u.unit_id
-  WHERE v_exact_scope AND d.profile=p_profile AND (v_type_ids IS NULL OR d.type_document_id=ANY(v_type_ids))
+  WHERE v_exact_scope AND u.kind = 'chunk' AND d.profile=p_profile AND (v_type_ids IS NULL OR d.type_document_id=ANY(v_type_ids))
    AND (v_date_ids IS NULL OR d.document_id=ANY(v_date_ids))
    AND (p_metadata IS NULL OR d.metadata @> p_metadata)
  ), semantic AS MATERIALIZED (
@@ -73,12 +69,12 @@ BEGIN
   SELECT e.chunk_id,e.embedding OPERATOR(rag.<=>) p_text_query AS distance
   FROM rag.km_text_embeddings e JOIN rag.km_profile_units u ON u.profile=e.profile AND u.unit_id=e.chunk_id
   JOIN rag.km_profile_documents d ON d.profile=u.profile AND d.document_id=u.document_id
-  WHERE NOT v_exact_scope AND e.profile=p_profile AND p_mode<>'lexical' AND (p_metadata IS NULL OR d.metadata @> p_metadata)
+  WHERE NOT v_exact_scope AND u.kind = 'chunk' AND e.profile=p_profile AND p_mode<>'lexical' AND (p_metadata IS NULL OR d.metadata @> p_metadata)
           AND (v_type_ids IS NULL OR d.type_document_id = ANY(v_type_ids))
           AND (v_date_ids IS NULL OR d.document_id = ANY(v_date_ids))
   ORDER BY e.embedding OPERATOR(rag.<=>) p_text_query,e.chunk_id LIMIT p_candidates)
  ), ranks AS (
-  SELECT l.unit_id,row_number() OVER(ORDER BY l.relevance DESC,l.unit_id) AS lr,NULL::bigint AS sr FROM lexical l
+  SELECT l.unit_id,row_number() OVER(ORDER BY l.distance,l.unit_id) AS lr,NULL::bigint AS sr FROM lexical l WHERE l.distance < 0
   UNION ALL
   SELECT s.chunk_id,NULL::bigint,row_number() OVER(ORDER BY s.distance,s.chunk_id) FROM semantic s
  ), fused AS (

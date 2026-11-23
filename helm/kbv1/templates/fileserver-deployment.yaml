@@ -1,0 +1,118 @@
+{{- if .Values.fileserver.enabled }}
+{{- $domain := .Values.domain_name | default "kb.local" -}}
+{{- $webuiHost := printf "%s.%s" .Values.ingress.subdomains.webui $domain -}}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "kbv1.fullname" . }}-fileserver
+  labels:
+    {{- include "kbv1.labels" . | nindent 4 }}
+    app.kubernetes.io/component: fileserver
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      {{- include "kbv1.selectorLabels" . | nindent 6 }}
+      app.kubernetes.io/component: fileserver
+  template:
+    metadata:
+      labels:
+        {{- include "kbv1.selectorLabels" . | nindent 8 }}
+        app.kubernetes.io/component: fileserver
+    spec:
+      {{- with .Values.global.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      containers:
+        - name: fileserver
+          image: {{ include "kbv1.image" (dict "root" . "image" .Values.fileserver.image) | quote }}
+          imagePullPolicy: {{ .Values.fileserver.image.pullPolicy }}
+          ports:
+            - name: http
+              containerPort: 8080
+              protocol: TCP
+            - name: health
+              containerPort: 8081
+              protocol: TCP
+          env:
+            - name: KB_ENV
+              value: {{ .Values.global.environment | default "dev" | quote }}
+            - name: ALLOWED_HOSTS
+              value: {{ tpl .Values.fileserver.env.allowedHosts . | quote }}
+            - name: FILESERVER_LEGACY_VERSIONS_ROOT
+              value: {{ .Values.fileserver.env.legacyVersionsRoot | quote }}
+            - name: WEBUI_PUBLIC_ORIGIN
+              value: {{ .Values.fileserver.env.webuiPublicOrigin | default (printf "%s://%s" (ternary "https" "http" (not (empty .Values.ingress.tls))) $webuiHost) | quote }}
+            - name: FILESERVER_DEV_USER
+              value: {{ default .Values.fileserver.env.devUser .Values.basicAuth.fileserver.user | quote }}
+            - name: FILESERVER_DEV_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "kbv1.secretName" . }}
+                  key: FILESERVER_DEV_PASSWORD
+            - name: FILESERVER_JWT_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "kbv1.secretName" . }}
+                  key: FILESERVER_JWT_SECRET
+            - name: FILESERVER_UI_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "kbv1.secretName" . }}
+                  key: FILESERVER_UI_SECRET
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 8081
+            initialDelaySeconds: 10
+            periodSeconds: 10
+            timeoutSeconds: 5
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 8081
+            initialDelaySeconds: 5
+            periodSeconds: 5
+            timeoutSeconds: 3
+          volumeMounts:
+            - name: corpus-storage
+              mountPath: /srv/data
+              readOnly: true
+            - name: source-versions
+              mountPath: /srv/source-versions
+              readOnly: true
+            - name: nginx-cache
+              mountPath: /var/cache/nginx
+            - name: nginx-lib
+              mountPath: /var/lib/nginx
+            - name: nginx-run
+              mountPath: /var/run
+          resources:
+            {{- toYaml .Values.fileserver.resources | nindent 12 }}
+      volumes:
+        - name: corpus-storage
+          {{- if eq .Values.sharedStorage.corpus.type "pvc" }}
+          persistentVolumeClaim:
+            claimName: {{ if .Values.sharedStorage.corpus.pvcName }}{{ .Values.sharedStorage.corpus.pvcName }}{{ else }}{{ include "kbv1.fullname" . }}-corpus{{ end }}
+          {{- else if eq .Values.sharedStorage.corpus.type "hostPath" }}
+          hostPath:
+            path: {{ .Values.sharedStorage.corpus.hostPath }}
+            type: Directory
+          {{- else }}
+          emptyDir: {}
+          {{- end }}
+        - name: source-versions
+          {{- if eq .Values.sharedStorage.sourceVersions.type "pvc" }}
+          persistentVolumeClaim:
+            claimName: {{ if .Values.sharedStorage.sourceVersions.pvcName }}{{ .Values.sharedStorage.sourceVersions.pvcName }}{{ else }}{{ include "kbv1.fullname" . }}-source-versions{{ end }}
+          {{- else }}
+          emptyDir: {}
+          {{- end }}
+        - name: nginx-cache
+          emptyDir: {}
+        - name: nginx-lib
+          emptyDir: {}
+        - name: nginx-run
+          emptyDir: {}
+{{- end }}

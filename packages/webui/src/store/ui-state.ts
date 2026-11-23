@@ -37,10 +37,12 @@ export type UiAction =
   | { type: 'annotations/opened'; open: boolean }
   | { type: 'annotations/replaced'; records: readonly Annotation[]; persistent: boolean }
   | { type: 'announcement/changed'; text: string };
+export const defaultSidebarWidth = 296;
+
 export function createUiState(): UiState {
   return {
     notifications: [],
-    sidebar: { width: 224, collapsed: false },
+    sidebar: { width: defaultSidebarWidth, collapsed: false },
     theme: 'light',
     themePreference: 'system',
     source: null,

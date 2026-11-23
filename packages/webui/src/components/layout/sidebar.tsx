@@ -7,11 +7,13 @@ import { Icon } from '../ui/icon';
 import { Button, IconButton } from '../ui/button';
 import { useChatSelector, useRenoActions } from '../chat/provider';
 import { canDeleteEmptyConversation } from '../../store/chat/model';
+import { defaultSidebarWidth } from '../../store/ui-state';
 import type { SidebarState } from './use-sidebar';
 import copy from '../../content/fr.json';
 import { formatText } from '../../content/text';
 export function Sidebar({
   state,
+  agentAvailable,
   open,
   onOpenChange,
   onSettings,
@@ -19,6 +21,7 @@ export function Sidebar({
   onSelect,
 }: {
   state: SidebarState;
+  agentAvailable: boolean;
   open: boolean;
   onOpenChange: (open: boolean) => void;
   onSettings: () => void;
@@ -48,6 +51,7 @@ export function Sidebar({
       id="sidebar"
       className={`sidebar ${state.collapsed && !state.mobile ? 'is-collapsed' : ''}`}
       aria-label={copy.navigation.navigationPrincipale}
+      data-agent-unavailable={!agentAvailable || undefined}
     >
       <div className="sidebar-heading">
         <Link
@@ -85,6 +89,7 @@ export function Sidebar({
         className="new-chat"
         aria-label={copy.navigation.nouveauChat}
         title={copy.navigation.nouveauChat}
+        disabled={!agentAvailable}
         onClick={onNew}
       >
         <Icon name="plus" />
@@ -105,10 +110,11 @@ export function Sidebar({
         className="history"
         ref={history}
         id="conversation-list"
+        aria-disabled={!agentAvailable || undefined}
         aria-label={copy.navigation.historiqueDesConversations}
       >
         {chat.recoveredConversations.map(item=>(
-          <button key={'recovery-'+item.id} className="history-item" title={item.title}
+          <button key={'recovery-'+item.id} className="history-item" title={item.title} disabled={!agentAvailable}
             onClick={()=>{const id=chat.restoreDeletedAsNew(item.id);if(id)onSelect(id);}}>
             <Icon name="chat" />
             <span>{copy.chatMessages.recupererCopieLocale} {item.title}</span>
@@ -119,6 +125,7 @@ export function Sidebar({
             <button
               className="history-item"
               data-conversation={item.id}
+              disabled={!agentAvailable}
               title={item.title}
               aria-label={item.title}
               aria-current={pathname === '/' && item.id === activeId ? 'page' : undefined}
@@ -127,13 +134,13 @@ export function Sidebar({
               <Icon name="chat" />
               <span>{item.title}</span>
             </button>
-            {item.removable && (!state.collapsed || state.mobile) && (
+            {conversations.length > 1 && item.removable && (!state.collapsed || state.mobile) && (
               <IconButton
                 className="history-delete"
                 icon="trash"
                 label={formatText(copy.common.deleteEmptyConversation, { title: item.title })}
                 title={formatText(copy.common.deleteEmptyConversation, { title: item.title })}
-                disabled={deleting !== null}
+                disabled={!agentAvailable || deleting !== null}
                 onClick={async () => {
                   setDeleting(item.id);
                   try {
@@ -210,7 +217,7 @@ export function Sidebar({
               state.pointer.current = null;
             }}
             onDoubleClick={() => {
-              state.setWidth(224);
+              state.setWidth(defaultSidebarWidth);
               popover.current?.hidePopover();
             }}
             onKeyDown={(event) => {
@@ -244,7 +251,7 @@ export function Sidebar({
               value={state.width}
               onChange={(event) => state.setWidth(event.target.valueAsNumber)}
             />
-            <Button id="sidebar-size-reset" variant="ghost" onClick={() => state.setWidth(224)}>
+            <Button id="sidebar-size-reset" variant="ghost" onClick={() => state.setWidth(defaultSidebarWidth)}>
               {copy.common.reset}
             </Button>
           </div>

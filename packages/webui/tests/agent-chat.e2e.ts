@@ -158,3 +158,26 @@ test('SSE streaming activity progression unfolds in real-time, preserves open de
   await expect(page.locator('.message--assistant')).toContainText(copy.common.reponseInterrompue);
   await expect(page.locator('.message--assistant .activity-indicator')).toHaveCount(0);
 });
+
+test('the sidebar disables conversations during agent downtime and hides the only conversation’s trash', async ({ page, isMobile }) => {
+  let available = true;
+  await page.route('**/api/agent/status', (route) => route.fulfill({ json: { available } }));
+  await login(page);
+  if (isMobile) await page.locator('#mobile-menu').click();
+  const newChat = page.locator('#new-chat');
+  const history = page.locator('#conversation-list');
+  await expect(newChat).toBeEnabled();
+  await expect(history.locator('[data-conversation]')).toHaveCount(1);
+  await expect(history.locator('.history-delete')).toHaveCount(0);
+  if (isMobile) await page.keyboard.press('Escape');
+
+  available = false;
+  await page.locator('.workspace-views a[href="/search"]').click();
+  if (isMobile) await page.locator('#mobile-menu').click();
+  await expect(newChat).toBeDisabled();
+  await expect(history).toHaveAttribute('aria-disabled', 'true');
+  await expect(history.locator('[data-conversation]')).toBeDisabled();
+  if (isMobile) await page.keyboard.press('Escape');
+  await page.keyboard.press('Control+k');
+  await expect(page).toHaveURL(/\/search$/);
+});

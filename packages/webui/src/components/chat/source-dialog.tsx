@@ -70,11 +70,17 @@ export function PdfDocument({
   title,
   id = 'pdf-viewer',
   highlightCitation = false,
+  continuous = false,
+  focusPassageId,
+  onPassageSelect,
 }: {
   reference: NonNullable<Source['pdf']>;
   title: string;
   id?: string;
   highlightCitation?: boolean;
+  continuous?: boolean;
+  focusPassageId?: string;
+  onPassageSelect?: (id: string) => void;
 }) {
   const host = useRef<HTMLDivElement>(null);
   const [status, setStatus] = useState<'loading' | 'ready' | 'error'>('loading');
@@ -86,7 +92,7 @@ export function PdfDocument({
         if (active && host.current) {
           viewer = new PdfViewer(host.current, title);
           setStatus('ready');
-          return viewer.open({ ...reference, highlightCitation });
+          return viewer.open({ ...reference, highlightCitation, continuous, focusPassageId, onPassageSelect });
         }
       })
       .catch(() => {
@@ -96,7 +102,7 @@ export function PdfDocument({
       active = false;
       viewer?.dispose();
     };
-  }, [reference.url, reference.page, reference.accessUrl, title, highlightCitation]);
+  }, [reference.url, reference.page, reference.accessUrl, title, highlightCitation, continuous, focusPassageId, onPassageSelect]);
   return (
     <div id={id} className="pdf-document">
       <div className="pdf-viewer-host" ref={host} />

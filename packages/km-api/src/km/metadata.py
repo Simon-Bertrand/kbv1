@@ -1,11 +1,8 @@
 """Read-only KM metadata API and atomic writer helpers; never interprets business codes."""
-import hashlib
 import json
-import bisect
 
 from psycopg.types.json import Jsonb
 from . import sql_client
-from .inventory import identity
 from .store import checked_handle,handle
 
 INFO_FIELDS=('identiteNodeId','currentVersionNodeId','currentVersionLabel','nature','identifiant',
@@ -41,38 +38,12 @@ def write_metadata(conn,bundle):
                  for index,linked in enumerate(item['linked_documents'] or [])))
 
 
-def markdown_units(document,markdown):
-    if not isinstance(markdown,str):
-        return []
-    starts=[0]
-    starts.extend(index+1 for index,char in enumerate(markdown) if char=='\n')
-    result=[]
-    for pos in range(0,len(markdown),4000):
-        text=markdown[pos:pos+4000]
-        if not text.strip():
-            continue
-        ident=identity('markdown',document+':'+str(pos)+':'+hashlib.sha256(text.encode()).hexdigest())
-        result.append((ident,text,{'id':ident,'document_id':document,'text':text,'context':'',
-            'format':'km.markdown','pages':[],'start_line':bisect.bisect_right(starts,pos),
-            'end_line':bisect.bisect_right(starts,pos+len(text)-1),
-            'start_char':pos,'end_char':pos+len(text)}))
-    return result
-
 def write_search_units(conn,bundle):
     doc=bundle['document_id']
     conn.execute(sql_client.DELETE_SEARCH_UNITS,(doc,))
     with conn.cursor() as cursor:
         cursor.executemany(sql_client.INSERT_SEARCH_UNIT,
-            ((record['id'],doc,'chunk',record['embedding_text'],Jsonb(record)) for record in bundle['chunks']))
-    markdown=bundle.get('markdown')
-    if markdown is not None:
-        conn.execute(sql_client.UPSERT_DOCUMENT_TEXT,
-            (doc,markdown,hashlib.sha256(markdown.encode()).hexdigest()))
-    else:
-        conn.execute(sql_client.DELETE_DOCUMENT_TEXT,(doc,))
-    with conn.cursor() as cursor:
-        cursor.executemany(sql_client.INSERT_SEARCH_UNIT,
-            ((ident,doc,'markdown',text,Jsonb(record)) for ident,text,record in markdown_units(doc,markdown)))
+            ((record['id'],doc,'chunk',record['text'],Jsonb(record)) for record in bundle['chunks']))
 
 
 def filter_conditions(filters):

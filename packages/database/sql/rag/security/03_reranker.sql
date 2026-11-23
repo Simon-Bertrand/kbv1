@@ -25,8 +25,9 @@ GRANT SELECT ON rag.km_embedding_settings, rag.embedding_profiles,
     rag.km_profile_documents, rag.km_profile_units, rag.km_text_embeddings,
     rag.km_files, rag.km_versions, rag.documents, rag.km_document_types TO km_reranker;
 GRANT EXECUTE ON FUNCTION rag.rag_search_profile(text,text,rag.vector,text,integer,integer,jsonb,bigint[],text,text[],jsonb),
-    rag.date_document_scope(jsonb), rag.km_version_date(jsonb),
+    rag.date_document_scope(jsonb), rag.km_version_date(jsonb), rag.has_physical_page(jsonb),
     rag.document_type_scope(bigint[],text,text[]),
+    rag.to_bm25query(text,text), rag.bm25_text_bm25query_score(text,rag.bm25query),
     rag.vector_dims(rag.vector), rag.vector_norm(rag.vector),
     rag.cosine_distance(rag.vector, rag.vector) TO km_reranker;
 COMMIT;

@@ -1,0 +1,125 @@
+{{- if .Values.kmApi.enabled }}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "kbv1.fullname" . }}-km-api
+  labels:
+    {{- include "kbv1.labels" . | nindent 4 }}
+    app.kubernetes.io/component: km-api
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      {{- include "kbv1.selectorLabels" . | nindent 6 }}
+      app.kubernetes.io/component: km-api
+  template:
+    metadata:
+      labels:
+        {{- include "kbv1.selectorLabels" . | nindent 8 }}
+        app.kubernetes.io/component: km-api
+    spec:
+      {{- with .Values.global.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      initContainers:
+        - name: source-versions-init
+          image: {{ include "kbv1.image" (dict "root" . "image" .Values.kmApi.image) | quote }}
+          imagePullPolicy: {{ .Values.kmApi.image.pullPolicy }}
+          securityContext:
+            runAsUser: 0
+          command:
+            - sh
+            - -ec
+            - chmod 0755 /source-versions && chown 10001:10001 /source-versions
+          volumeMounts:
+            - name: source-versions
+              mountPath: /source-versions
+      containers:
+        - name: km-api
+          image: {{ include "kbv1.image" (dict "root" . "image" .Values.kmApi.image) | quote }}
+          imagePullPolicy: {{ .Values.kmApi.image.pullPolicy }}
+          ports:
+            - name: http
+              containerPort: 8000
+              protocol: TCP
+          env:
+            - name: KB_ENV
+              value: {{ .Values.global.environment | default "dev" | quote }}
+            - name: KB_KM_SCHEMA
+              value: {{ .Values.kmApi.env.kmSchema | quote }}
+            - name: KB_DATABASE_URL
+              value: {{ printf "postgresql://km_reader@%s-postgres:5432/%s" (include "kbv1.fullname" .) .Values.postgres.env.db | quote }}
+            - name: PGPASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "kbv1.secretName" . }}
+                  key: POSTGRES_KM_READER_PASSWORD
+            - name: ENCODER_URL
+              value: {{ printf "http://%s-encoder:8001" (include "kbv1.fullname" .) | quote }}
+            - name: KB_CORPUS_ROOT
+              value: {{ .Values.kmApi.env.corpusRoot | quote }}
+            - name: KB_UPSTREAM_ROOT
+              value: {{ .Values.kmApi.env.upstreamRoot | quote }}
+            - name: KB_FILESERVER_URL
+              value: {{ printf "http://%s-fileserver:8080" (include "kbv1.fullname" .) | quote }}
+            - name: SOURCE_VERSIONS_DIR
+              value: {{ .Values.kmApi.env.sourceVersionsDir | quote }}
+            - name: FILESERVER_DEV_USER
+              value: {{ default .Values.kmApi.env.fileserverDevUser .Values.basicAuth.fileserver.user | quote }}
+            - name: FILESERVER_DEV_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "kbv1.secretName" . }}
+                  key: FILESERVER_DEV_PASSWORD
+            - name: KM_INDEXER_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "kbv1.secretName" . }}
+                  key: KM_INDEXER_TOKEN
+            - name: KM_API_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "kbv1.secretName" . }}
+                  key: KM_API_TOKEN
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 8000
+            initialDelaySeconds: 15
+            periodSeconds: 15
+            timeoutSeconds: 5
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 8000
+            initialDelaySeconds: 10
+            periodSeconds: 10
+            timeoutSeconds: 5
+          volumeMounts:
+            - name: corpus-storage
+              mountPath: {{ .Values.kmApi.env.corpusRoot }}
+            - name: source-versions
+              mountPath: {{ .Values.kmApi.env.sourceVersionsDir }}
+          resources:
+            {{- toYaml .Values.kmApi.resources | nindent 12 }}
+      volumes:
+        - name: corpus-storage
+          {{- if eq .Values.sharedStorage.corpus.type "pvc" }}
+          persistentVolumeClaim:
+            claimName: {{ if .Values.sharedStorage.corpus.pvcName }}{{ .Values.sharedStorage.corpus.pvcName }}{{ else }}{{ include "kbv1.fullname" . }}-corpus{{ end }}
+          {{- else if eq .Values.sharedStorage.corpus.type "hostPath" }}
+          hostPath:
+            path: {{ .Values.sharedStorage.corpus.hostPath }}
+            type: Directory
+          {{- else }}
+          emptyDir: {}
+          {{- end }}
+        - name: source-versions
+          {{- if eq .Values.sharedStorage.sourceVersions.type "pvc" }}
+          persistentVolumeClaim:
+            claimName: {{ if .Values.sharedStorage.sourceVersions.pvcName }}{{ .Values.sharedStorage.sourceVersions.pvcName }}{{ else }}{{ include "kbv1.fullname" . }}-source-versions{{ end }}
+          {{- else }}
+          emptyDir: {}
+          {{- end }}
+{{- end }}

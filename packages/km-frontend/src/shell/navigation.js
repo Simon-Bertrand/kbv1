@@ -1,7 +1,7 @@
 export function initialDestination(location) {
   const hash = location.hash.replace(/^#/, "");
   if (
-    ["athena", "sources", "rag", "traces", "library", "evaluation", "atlas"].includes(hash)
+    ["athena", "sources", "rag", "traces", "library", "evaluation", "atlas", "ingestion"].includes(hash)
   ) {
     return { view: hash };
   }
@@ -10,6 +10,7 @@ export function initialDestination(location) {
   return (
     {
       "/atlas": { view: "atlas" },
+      "/ingestion": { view: "ingestion" },
       "/documents": { view: "sources" },
       "/metadata": { view: "library", tab: "metadata" },
       "/kanban": { view: "library" },

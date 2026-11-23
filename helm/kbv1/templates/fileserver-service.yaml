@@ -1,0 +1,26 @@
+{{- if .Values.fileserver.enabled }}
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "kbv1.fullname" . }}-fileserver
+  labels:
+    {{- include "kbv1.labels" . | nindent 4 }}
+    app.kubernetes.io/component: fileserver
+spec:
+  type: {{ .Values.fileserver.service.type }}
+  ports:
+    - port: {{ .Values.fileserver.service.port }}
+      targetPort: 8080
+      protocol: TCP
+      name: http
+      {{- if and (eq .Values.fileserver.service.type "NodePort") .Values.fileserver.service.nodePort }}
+      nodePort: {{ .Values.fileserver.service.nodePort }}
+      {{- end }}
+    - port: {{ .Values.fileserver.service.healthPort }}
+      targetPort: 8081
+      protocol: TCP
+      name: health
+  selector:
+    {{- include "kbv1.selectorLabels" . | nindent 4 }}
+    app.kubernetes.io/component: fileserver
+{{- end }}

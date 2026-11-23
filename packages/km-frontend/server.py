@@ -21,7 +21,8 @@ TARGETS = {'athena': os.environ.get('FRONTEND_AGENT_URL', 'http://km-agent:8086'
            'rag': os.environ.get('FRONTEND_RAG_URL', 'http://km-api:8000'),
            'knowledge': os.environ.get('FRONTEND_KB_URL', ''),
            'files': os.environ.get('FRONTEND_FILESERVER_URL', ''),
-           'index': os.environ.get('FRONTEND_INDEX_URL', '')}
+           'index': os.environ.get('FRONTEND_INDEX_URL', ''),
+           'ingestion': os.environ.get('FRONTEND_INGESTION_URL', 'http://ingestion:8012')}
 class RejectUpstreamCookies(DefaultCookiePolicy):
     def set_ok(self, cookie, request):
         return False
@@ -148,6 +149,10 @@ async def relay(request, base, path, management=False, stream=False, query_param
         token = os.environ.get('KM_API_TOKEN', '')
         if token:
             headers['authorization'] = f'Bearer {token}'
+    elif target == 'ingestion':
+        token = os.environ.get('KM_INDEXER_TOKEN', '')
+        if token:
+            headers['authorization'] = f'Bearer {token}'
     elif target == 'files' and configured_environment() == 'dev':
         user = os.environ.get('FILESERVER_DEV_USER', 'dev')
         password = os.environ.get('FILESERVER_DEV_PASSWORD', 'dev')
@@ -165,7 +170,9 @@ async def relay(request, base, path, management=False, stream=False, query_param
         response_headers = {k: upstream.headers[k] for k in
                             ('content-type', 'content-disposition', 'content-range', 'accept-ranges',
                              'etag', 'last-modified', 'retry-after') if k in upstream.headers}
-        if stream or path.endswith(('/source', '/image', '/crop')):
+        if target == 'ingestion' and path == 'api/events':
+            response_headers['x-accel-buffering'] = 'no'
+        if stream or path.endswith(('/source', '/image', '/crop', '/events')):
             for key in ('content-length', 'content-encoding'):
                 if key in upstream.headers:
                     response_headers[key] = upstream.headers[key]
@@ -196,6 +203,13 @@ async def api(target: str, path: str, request: Request):
         if request.method not in {'GET', 'HEAD'} and not (request.method == 'POST' and path in {'jobs','catalog/sync','catalog/cache-choice','chunk-jobs','chunk-jobs/stop','candidates','profiles/register','profiles/activate','profiles/rename','profiles/delete-preview','profiles/delete-embeddings'}):
             raise HTTPException(405)
         return await relay(request, TARGETS['index'], path, target=target)
+    if target == 'ingestion':
+        if path not in {'health', 'status', 'dag', 'files', 'events', 'pipeline/run', 'pipeline/stop'}:
+            raise HTTPException(404)
+        if request.method not in {'GET', 'HEAD'} and not (request.method == 'POST' and path in {'pipeline/run', 'pipeline/stop'}):
+            raise HTTPException(405)
+        upstream_path = 'health' if path == 'health' else f'api/{path}'
+        return await relay(request, TARGETS['ingestion'], upstream_path, stream=(path == 'events'), target=target)
     if target == 'files':
         if request.method not in {'GET', 'HEAD'}:
             raise HTTPException(405)

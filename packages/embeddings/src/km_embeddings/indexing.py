@@ -48,7 +48,7 @@ class Publisher:
                 (profile,[r['id'] for r in chunks])).fetchall()}
             if any(row['document_id'] != doc for row in existing.values()):
                 raise ValueError('PdfParse record identity belongs to another document')
-            hashes = {r['id']: digest(r['embedding_text']) for r in chunks}
+            hashes = {r['id']: digest(r['text']) for r in chunks}
             checkpoints = Checkpoints(conn, doc, fingerprint, hashes, profile=profile)
             vectors = checkpoints.saved()
             published = {record['id']: existing[record['id']]['embedding'] for record in chunks
@@ -74,11 +74,11 @@ class Publisher:
                     tokenizer = None if getattr(self.encoder, 'validates_token_budget', False) is True else getattr(self.encoder, 'tokenizer', None)
                     max_tokens = int(metadata.get('max_tokens', 512)) if tokenizer else None
                     for record in batch:
-                        if len(record['embedding_text']) > 32000:
+                        if len(record['text']) > 32000:
                             raise RuntimeError('Chunk PdfParse exceeds E5 character limit; adjust chunking in Studio')
-                        if tokenizer and len(tokenizer.encode('passage: ' + record['embedding_text'])) > max_tokens:
+                        if tokenizer and len(tokenizer.encode('passage: ' + record['text'])) > max_tokens:
                             raise RuntimeError(f'Chunk PdfParse exceeds E5 {max_tokens}-token budget; adjust chunking in Studio, no truncation applied')
-                    encoded = self.encoder.encode([r['embedding_text'] for r in batch], query=False)
+                    encoded = self.encoder.encode([r['text'] for r in batch], query=False)
                     if len(encoded) != len(batch):
                         raise ValueError('Wrong E5 batch length')
                     saved = {}
@@ -137,7 +137,7 @@ class Publisher:
                     from km.metadata import write_metadata, write_search_units
                     write_metadata(conn,bundle)
                     write_search_units(conn,bundle)
-                snapshot(conn,profile,bundle,vectors,hashes,km=self.km,
+                snapshot(conn,profile,bundle,vectors,hashes,
                          original_name=original_name,type_document_id=type_document_id)
                 checkpoints.published()
         return {'document_id': doc, 'chunks': len(chunks), 'visuals': len(visuals),

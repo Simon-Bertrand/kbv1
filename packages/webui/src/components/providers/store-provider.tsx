@@ -1,6 +1,6 @@
 'use client';
 import { createContext, useContext, useEffect, useState, type ReactNode } from 'react';
-import { createUiStore, type UiState, type UiStore } from '../../store/ui-state';
+import { createUiStore, defaultSidebarWidth, type UiState, type UiStore } from '../../store/ui-state';
 import { useStoreSelector } from './use-selector';
 import type { Equality } from '../../store/create-store';
 const Context = createContext<UiStore | null>(null);
@@ -27,7 +27,7 @@ export function UiProvider({
         const width = Number(localStorage.getItem('reno-plus-sidebar-width'));
         store.dispatch({
           type: 'sidebar/restored',
-          width: Number.isFinite(width) && width >= 200 && width <= 360 ? width : 224,
+          width: Number.isFinite(width) && width >= 200 && width <= 360 ? width : defaultSidebarWidth,
           collapsed: localStorage.getItem('reno-plus-sidebar-collapsed') === 'true',
         });
       } catch {}

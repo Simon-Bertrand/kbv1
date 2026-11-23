@@ -9,10 +9,8 @@
  );
 CREATE TABLE IF NOT EXISTS rag.km_profile_units (
  profile text NOT NULL, unit_id text NOT NULL, document_id text NOT NULL,
- kind text NOT NULL CHECK(kind IN ('chunk','markdown','visual')),
+ kind text NOT NULL CHECK(kind IN ('chunk','visual')),
  record jsonb NOT NULL,
- lexical tsvector GENERATED ALWAYS AS
-   (to_tsvector('simple'::regconfig,coalesce(record->>'context','')||' '||coalesce(record->>'text',''))) STORED,
  PRIMARY KEY(profile,unit_id),
  FOREIGN KEY(profile,document_id) REFERENCES rag.km_profile_documents ON DELETE CASCADE
 );

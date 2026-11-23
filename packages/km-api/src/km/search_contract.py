@@ -41,6 +41,7 @@ class SearchRequest(BaseModel):
     type_document_labels: list[DocumentTypeLabel] = Field(default_factory=list, max_length=100)
     date_filters: dict[Literal['edition', 'approval', 'repeal'], DateRange] = Field(default_factory=dict)
     limit: int = Field(default=10, ge=1, le=100)
+    rerank: bool = False
 
 
 class DirectSearchRequest(SearchRequest):

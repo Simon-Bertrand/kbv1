@@ -196,6 +196,39 @@ BEGIN
 END;
 $$;
 
+-- Only the text of physical PDF chunks is searched lexically.
+INSERT INTO rag.chunks (chunk_id, document_id, record)
+SELECT id, 'test-rag-a', record || jsonb_build_object(
+    'id', id, 'document_id', 'test-rag-a', 'format', 'pdfparse.index_record', 'schema_version', 4)
+FROM (VALUES
+    ('test-valid-page', '{"text":"temoinlexical","locations":[{"page_no":2}]}'::jsonb),
+    ('test-no-page', '{"text":"temoinlexical","pages":[0]}'::jsonb),
+    ('test-context-only', '{"text":"passage source","embedding_text":"temoinlexical","body_pages":[1]}'::jsonb)
+) AS fixture(id, record);
+
+INSERT INTO rag.km_profile_units (profile, unit_id, document_id, kind, record) VALUES
+    ('test-rag-profile', 'test-valid-page', 'test-rag-a', 'chunk',
+        '{"text":"temoinlexical","locations":[{"page_no":2}]}'),
+    ('test-rag-profile', 'test-no-page', 'test-rag-a', 'chunk',
+        '{"text":"temoinlexical","pages":[0]}'),
+    ('test-rag-profile', 'test-context-only', 'test-rag-a', 'chunk',
+        '{"text":"passage source","context":"temoinlexical","body_pages":[1]}');
+
+DO $$
+DECLARE ids text[];
+BEGIN
+    SELECT array_agg(id ORDER BY id) INTO ids
+    FROM rag.rag_search_profile('test-rag-profile', 'temoinlexical', NULL, 'lexical');
+    IF ids IS DISTINCT FROM ARRAY['test-valid-page'] THEN
+        RAISE EXCEPTION 'La recherche lexicale doit cibler le texte paginé des chunks : %', ids;
+    END IF;
+    SELECT array_agg(id ORDER BY id) INTO ids
+    FROM rag.rag_search_hybrid('temoinlexical', NULL, 'lexical');
+    IF ids IS DISTINCT FROM ARRAY['test-valid-page'] THEN
+        RAISE EXCEPTION 'Le classement BM25 doit cibler le texte paginé des chunks : %', ids;
+    END IF;
+END $$;
+
 ROLLBACK;
 
 -- Compatibilité avec une transaction de lecture seule, même sur corpus vide.

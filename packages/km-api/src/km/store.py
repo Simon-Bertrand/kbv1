@@ -57,6 +57,9 @@ def unit(row):
     if not isinstance(text, str) or not isinstance(context, str):
         raise ValueError('Invalid source text')
     locator = {'type': kind, 'pages': pages, 'record_id': ident}
+    span = record.get('span')
+    if kind == 'chunk' and isinstance(span, dict) and type(span.get('start')) is int and span['start'] >= 0:
+        locator['start_char'] = span['start']
     if kind == 'markdown':
         locator.update(start_line=record.get('start_line'),end_line=record.get('end_line'),
                        start_char=record.get('start_char'),end_char=record.get('end_char'))
@@ -129,8 +132,8 @@ class Knowledgebase:
             if len(docs) != 1:
                 raise ValueError('Ambiguous document handle')
             upstream = docs[0]['document_id']
-            union = sql_client.document_units(self.km)
-            params=(upstream,upstream,upstream) if self.km else (upstream,upstream)
+            union = sql_client.DOCUMENT_UNITS
+            params=(upstream,upstream)
             total=conn.execute(sql_client.count_document_units(union),params).fetchone()['n']
             rows=conn.execute(sql_client.list_document_units(union),
                 (*params,limit,offset)).fetchall()
@@ -194,7 +197,7 @@ class Knowledgebase:
         kind,digest=checked_handle(ident,'cv')
         with self.connection() as conn:
             profile=active(conn)
-            kinds=['chunk','markdown'] if kind=='c' else ['visual']
+            kinds=['chunk'] if kind=='c' else ['visual']
             rows=conn.execute(sql_client.PROFILE_UNIT_BY_DIGEST,(profile,digest,kinds)).fetchall()
         if len(rows)>1:raise ValueError('Ambiguous record handle')
         return dict(unit(rows[0]),profile=profile) if rows else None
@@ -275,7 +278,7 @@ class Knowledgebase:
         candidates = max(100, limit)
         conn.execute(sql_client.HNSW_STRICT_ORDER)
         conn.execute(sql_client.HNSW_SEARCH_BUDGET)
-        return conn.execute(sql_client.filtered_search(conditions), [*params, query, mode, query, candidates, vector, mode, vector,
+        return conn.execute(sql_client.filtered_search(conditions), [*params, query, mode, candidates, vector, mode, vector,
                                   candidates, limit, profile]).fetchall()
 
     def _profile_visual_search(self, conn, vector, limit, filters, conditions, scope_params):

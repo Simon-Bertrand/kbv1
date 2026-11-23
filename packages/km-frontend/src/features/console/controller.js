@@ -24,6 +24,7 @@ export function mountConsole() {
     rag: "Recherche",
     traces: "Suivi",
     library: "Indexation",
+    ingestion: "Ingestion",
     evaluation: "Évaluation",
     atlas: "Atlas des métadonnées",
     viewer: "Pages sources",

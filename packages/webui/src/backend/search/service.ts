@@ -1,7 +1,7 @@
 import { createHmac, timingSafeEqual } from 'node:crypto';
 import copy from '../../content/fr.json';
 import { formatText } from '../../content/text';
-import { searchDateFields, searchSourcePrefix, searchSourceToken, type DocumentType, type SearchDateFilters, type SearchInput, type SearchResponse } from '../../store/search/types';
+import { searchDateFields, searchPdfOpenQuery, searchSourcePrefix, searchSourceToken, type DocumentType, type SearchDateFilters, type SearchInput, type SearchResponse } from '../../store/search/types';
 import { readJson } from '../http/json';
 import { issuePdfAccess } from '../source-files/access';
 import { upstreamHeaders } from '../logger';
@@ -22,6 +22,9 @@ function passageLocations(value: unknown) {
         (coord_origin !== 'TOPLEFT' && coord_origin !== 'BOTTOMLEFT')) return [];
     return [{ page_no, bbox, coord_origin }];
   });
+}
+function hitPassage(hit: Record<string, unknown>) {
+  return [hit.id, hit.page_id].find((id): id is string => typeof id === 'string' && passageId.test(id));
 }
 export class SearchError extends Error {
   constructor(readonly status: number, message: string) { super(message); }
@@ -149,17 +152,36 @@ export function createSearchService(options: {
       if ((input.type_document_ids || input.perimeter_code || input.date_filters) && data.scope_applied !== true)
         throw new SearchError(502, text.invalidResponse);
       if (!Array.isArray(data.results) || data.results.length > input.limit) throw new SearchError(502, text.invalidResponse);
-      return { results: data.results.map((raw, index) => {
-        const hit = object(raw);
+      const hits = data.results.map(object);
+      const documentPassages = new Map<string, Set<string>>();
+      for (const hit of hits) {
+        if (typeof hit.document_id !== 'string' || !documentId.test(hit.document_id))
+          throw new SearchError(502, text.invalidResponse);
+        const passage = hitPassage(hit);
+        if (!passage) continue;
+        const passages = documentPassages.get(hit.document_id) ?? new Set<string>();
+        passages.add(passage);
+        documentPassages.set(hit.document_id, passages);
+      }
+      return { results: hits.map((hit, index) => {
         if (typeof hit.document_id !== 'string' || !documentId.test(hit.document_id) ||
             typeof hit.score !== 'number' || !Number.isFinite(hit.score) || typeof hit.text !== 'string')
           throw new SearchError(502, text.invalidResponse);
         const locator = hit.locator ? object(hit.locator) : {};
         const pages = Array.isArray(locator.pages) ? locator.pages : [];
-        const page = [locator.page, ...pages].find((page): page is number => Number.isSafeInteger(page) && Number(page) > 0);
-        const passage = [hit.id, hit.page_id].find((id): id is string => typeof id === 'string' && passageId.test(id));
-        const pdfUrl = searchSourcePrefix + issue(hit.document_id, principal, passage);
-        return { documentId: hit.document_id, score: hit.score, source: {
+        const page = [locator.page, ...pages].filter((page): page is number =>
+          Number.isSafeInteger(page) && Number(page) > 0).sort((a, b) => a - b)[0];
+        const passage = hitPassage(hit);
+        const passages = [...(documentPassages.get(hit.document_id) ?? [])];
+        const selection = passages.join(',');
+        const fileUrl = searchSourcePrefix + issue(hit.document_id, principal, passage);
+        const pdfUrl = fileUrl
+          + (passages.length > 1 ? '?' + new URLSearchParams({
+            chunks: selection, proof: sign(`boxes:${hit.document_id}:${selection}`, principal),
+          }) : '');
+        const start = locator.start_char;
+        const startOffset = typeof start === 'number' && Number.isSafeInteger(start) && start >= 0 ? start : undefined;
+        return { documentId: hit.document_id, score: hit.score, passageId: passage, startOffset, pdfOpenUrl: fileUrl + searchPdfOpenQuery, source: {
           id: index + 1, title: bounded(hit.original_name, 500) || text.sourceTitle,
           category: text.sourceCategory, excerpt: bounded(hit.text, 20000),
           pages: page ? formatText(text.pageLabel, { page }) : '',
@@ -173,36 +195,58 @@ export function createSearchService(options: {
       const expected = sign(token.slice(0, token.lastIndexOf('.')), principal);
       if (!timingSafeEqual(Buffer.from(match[3]!, 'hex'), Buffer.from(expected, 'hex')))
         throw new SearchError(404, text.notFound);
-      // Each open verifies account and epoch before issuing a short-lived file JWT.
+      const documentId = match[1]!;
+      const selection = new URL(request.url).searchParams;
+      const chunks = selection.get('chunks');
+      const proof = selection.get('proof');
+      const primary = match[2] && passageId.test(match[2]) ? match[2] : undefined;
+      const ids = new Set(primary ? [primary] : []);
+      if (chunks !== null || proof !== null) {
+        const related = chunks?.split(',') ?? [];
+        if (!proof || !digestPattern.test(proof) || related.length < 2 || related.length > 50
+            || related.some((id) => !passageId.test(id))
+            || !timingSafeEqual(Buffer.from(proof, 'hex'),
+              Buffer.from(sign(`boxes:${documentId}:${chunks}`, principal), 'hex'))) {
+          throw new SearchError(404, text.notFound);
+        }
+        related.forEach((id) => ids.add(id));
+      }
+      // Authorize the exact PDF snapshot before returning any coordinates.
       try {
-        const documentId = match[1]!;
-        let sourceSha256: string | undefined;
-        let locations: ReturnType<typeof passageLocations> = [];
-        if (match[2] && passageId.test(match[2])) {
+        const records = await Promise.all([...ids].map(async (id) => {
           try {
-            const response = await fetchUpstream(`${origin()}/passages/${match[2]}`, {
+            const response = await fetchUpstream(`${origin()}/passages/${id}`, {
               headers: upstreamHeaders({ Accept: 'application/json', ...(env.KM_API_TOKEN ? { Authorization: 'Bearer ' + env.KM_API_TOKEN } : {}) }),
               redirect: 'error', cache: 'no-store',
               signal: AbortSignal.any([request.signal, AbortSignal.timeout(2500)]),
             });
-            if (response.ok) {
-              const passage = object(await readJson(response.body, 1024 * 1024, () => new SearchError(502, text.invalidResponse)));
-              if (passage.document_id === documentId && passage.id === match[2]) {
-                const record = object(passage.record);
-                const digest = passage.source_sha256 ?? record.document_id;
-                if (typeof digest === 'string' && digestPattern.test(digest)) {
-                  sourceSha256 = digest;
-                  locations = passageLocations(record.locations);
-                }
-              }
-            } else {
+            if (!response.ok) {
               await response.body?.cancel();
+              return;
+            }
+            const passage = object(await readJson(response.body, 1024 * 1024, () => new SearchError(502, text.invalidResponse)));
+            if (passage.document_id !== documentId || passage.id !== id) return;
+            const record = object(passage.record);
+            const digest = passage.source_sha256 ?? record.document_id;
+            if (typeof digest === 'string' && digestPattern.test(digest)) {
+              return { digest, locations: passageLocations(record.locations).map((box) => ({ ...box, passageId: id })) };
             }
           } catch {
             request.signal.throwIfAborted();
           }
-        }
+        }));
+        const sourceSha256 = records[0]?.digest;
+        const boxes = sourceSha256 ? records.flatMap((record) =>
+          record?.digest === sourceSha256 ? record.locations : []) : [];
+        const locations = [...new Map(boxes.map((box) => [JSON.stringify(box), box])).values()];
         const access = await issuePdfAccess({ documentId, sourceSha256, principal, signal: request.signal, env, fetch: fetchUpstream, now });
+        if (selection.get('open') === '1') {
+          const { url } = await access.json();
+          const headers = new Headers(access.headers);
+          headers.delete('Content-Type');
+          headers.set('Location', url);
+          return new Response(null, { status: 302, headers });
+        }
         return locations.length
           ? Response.json({ ...await access.json(), locations }, { headers: access.headers })
           : access;

@@ -7,6 +7,7 @@ import { authTestEnv } from '../tests/fixtures/auth.mjs';
 
 const documentId = 'd' + 'b'.repeat(32);
 const passageId = 'c' + 'e'.repeat(32);
+const nextPassageId = 'c' + 'f'.repeat(32);
 const runs = new Map();
 const searchMode = process.env.WEBUI_SEARCH_MODE ?? 'hybrid';
 const lexicalOnly = searchMode === 'lexical';
@@ -117,7 +118,7 @@ const agent = createServer(async (req, res) => {
     } });
   }
 });
-const pdf = await readFile(new URL('../public/documents/guide-marque.pdf', import.meta.url));
+const pdf = await readFile(process.env.WEBUI_TEST_PDF || new URL('../public/documents/guide-marque.pdf', import.meta.url));
 const km = createServer(async (req, res) => {
   if (req.url === '/health' && process.env.WEBUI_TEST_OFFLINE === 'retrieval') return json(res, { status: 'error' }, 503);
   if (req.url === '/health') return json(res, { status: 'ok', backend: 'postgres', capabilities: { lexical: true, semantic: !lexicalOnly, hybrid: !lexicalOnly } });
@@ -134,8 +135,8 @@ const km = createServer(async (req, res) => {
     if (input.question === 'vide') return json(res, { results: [] });
     if (input.question === 'attente') await new Promise((resolve) => setTimeout(resolve, 5000));
     const results = [
-      { id: passageId, document_id: documentId, score: .9, original_name: 'Notice de test.pdf', locator: { pages: [1] }, text: 'La pression maximale est de 12 bar.' },
-      { document_id: documentId, score: .8, original_name: 'Notice de test.pdf', locator: { pages: [1] }, text: '<script>alert(1)</script> : vérifier la soupape.' },
+      { id: nextPassageId, document_id: documentId, score: .9, original_name: 'Notice de test.pdf', locator: { pages: [input.question === 'ordre' ? 1 : 2], start_char: 120 }, text: '<script>alert(1)</script> : vérifier la soupape.' },
+      { id: passageId, document_id: documentId, score: .8, original_name: 'Notice de test.pdf', locator: { pages: [1], start_char: 0 }, text: 'La pression maximale est de 12 bar.' },
       { document_id: 'd' + 'c'.repeat(32), score: .7, original_name: 'Entretien.pdf', locator: { pages: [1] }, text: 'Contrôler le circuit chaque année.' },
     ];
     const scoped = Boolean(input.perimeter_code || input.type_document_ids?.length || input.date_filters);
@@ -154,6 +155,10 @@ const km = createServer(async (req, res) => {
     blocks: [{ type: 'text', text: 'La pression maximale est de 12 bar.' }],
     record: { locations: [{ page_no: 1, bbox: [30, 60, 160, 90], coord_origin: 'TOPLEFT' }] },
   });
+  if (req.url === `/passages/${nextPassageId}`) return json(res, {
+    id: nextPassageId, document_id: documentId, source_sha256: 'a'.repeat(64),
+    record: { locations: [{ page_no: 2, bbox: [40, 100, 185, 120], coord_origin: 'TOPLEFT' }] },
+  });
   if (new URL(req.url, 'http://fixture').pathname === `/documents/${documentId}/source-reference`) return json(res,{document_id:documentId,relative_path:'_versions/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa.pdf'});
   return json(res,{},404);
 });
@@ -165,9 +170,25 @@ const files = createServer((req,res)=>{
   if (req.url === '/health') return res.end('OK');
   const token = new URL(req.url,'http://fixture').searchParams.get('token');
   if (!token || token.split('.').length !== 3) return json(res,{},401);
-  res.writeHead(200, {'Content-Type':'application/pdf','Content-Length':pdf.byteLength,'Accept-Ranges':'bytes',
-    'Access-Control-Allow-Origin':`http://127.0.0.1:${process.env.WEBUI_TEST_PORT ?? '4187'}`});
-  res.end(req.method === 'HEAD' ? undefined : pdf);
+  const headers = {
+    'Content-Type': 'application/pdf',
+    'Accept-Ranges': 'bytes',
+    'Access-Control-Allow-Origin': `http://127.0.0.1:${process.env.WEBUI_TEST_PORT ?? '4187'}`,
+    'Access-Control-Expose-Headers': 'Accept-Ranges, Content-Length, Content-Range',
+  };
+  const range = /^bytes=(\d+)-(\d*)$/.exec(req.headers.range ?? '');
+  const start = range ? Number(range[1]) : 0;
+  const end = range && range[2] ? Math.min(Number(range[2]), pdf.length - 1) : pdf.length - 1;
+  if (end < start) {
+    res.writeHead(416, { ...headers, 'Content-Range': `bytes */${pdf.length}` });
+    return res.end();
+  }
+  res.writeHead(range ? 206 : 200, {
+    ...headers,
+    'Content-Length': end - start + 1,
+    ...(range && { 'Content-Range': `bytes ${start}-${end}/${pdf.length}` }),
+  });
+  res.end(req.method === 'HEAD' ? undefined : pdf.subarray(start, end + 1));
 });
 const filesUrl = await listen(files);
 const agentUrl = await listen(agent);

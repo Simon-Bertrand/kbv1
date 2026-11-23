@@ -1,0 +1,70 @@
+{{- if .Values.ingress.enabled -}}
+{{- $domain := .Values.domain_name | default "kb.local" -}}
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: {{ include "kbv1.fullname" . }}-ingress
+  labels:
+    {{- include "kbv1.labels" . | nindent 4 }}
+  {{- with .Values.ingress.annotations }}
+  annotations:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+spec:
+  {{- if .Values.ingress.className }}
+  ingressClassName: {{ .Values.ingress.className }}
+  {{- end }}
+  {{- if .Values.ingress.tls }}
+  tls:
+    {{- toYaml .Values.ingress.tls | nindent 4 }}
+  {{- end }}
+  rules:
+    {{- if .Values.webui.enabled }}
+    - host: {{ printf "%s.%s" .Values.ingress.subdomains.webui $domain | quote }}
+      http:
+        paths:
+          - path: {{ .Values.ingress.paths.webui | default "/" }}
+            pathType: Prefix
+            backend:
+              service:
+                name: {{ include "kbv1.fullname" . }}-webui
+                port:
+                  number: {{ .Values.webui.service.port }}
+    {{- end }}
+    {{- if .Values.kmFrontend.enabled }}
+    - host: {{ printf "%s.%s" .Values.ingress.subdomains.kmFrontend $domain | quote }}
+      http:
+        paths:
+          - path: {{ .Values.ingress.paths.kmFrontend | default "/" }}
+            pathType: Prefix
+            backend:
+              service:
+                name: {{ include "kbv1.fullname" . }}-km-frontend
+                port:
+                  number: {{ .Values.kmFrontend.service.port }}
+    {{- end }}
+    {{- if .Values.pdfparse.enabled }}
+    - host: {{ printf "%s.%s" .Values.ingress.subdomains.pdfparseStudio $domain | quote }}
+      http:
+        paths:
+          - path: {{ .Values.ingress.paths.pdfparseStudio | default "/" }}
+            pathType: Prefix
+            backend:
+              service:
+                name: {{ include "kbv1.fullname" . }}-pdfparse
+                port:
+                  number: {{ .Values.pdfparse.service.port }}
+    {{- end }}
+    {{- if and .Values.fileserver.enabled .Values.ingress.fileserverExposed }}
+    - host: {{ printf "%s.%s" .Values.ingress.subdomains.fileserver $domain | quote }}
+      http:
+        paths:
+          - path: {{ .Values.ingress.paths.fileserver | default "/" }}
+            pathType: Prefix
+            backend:
+              service:
+                name: {{ include "kbv1.fullname" . }}-fileserver
+                port:
+                  number: {{ .Values.fileserver.service.port }}
+    {{- end }}
+{{- end }}

@@ -12,7 +12,7 @@ test("KM shell contains current workspaces",async()=>{
   try {
     const {default:Layout}=await vite.ssrLoadModule("/src/shell/view.jsx");
     const markup=renderToStaticMarkup(React.createElement(Layout));
-    for(const id of ["question","askForm","ragForm","traceSvg","evCreate","atlas","viewer","library"])
+    for(const id of ["question","askForm","ragForm","traceSvg","evCreate","atlas","viewer","library","ingestion"])
       assert.ok(markup.includes('id="'+id+'"'),id);
     assert.ok(markup.includes('id="library"'));
     assert.ok(!markup.includes('id="mgFiles"'));
@@ -23,6 +23,7 @@ test("KM shell contains current workspaces",async()=>{
 test("legacy links open a workspace within the one application", () => {
   const route = (pathname, hash = "") => initialDestination({ pathname, hash });
   assert.deepEqual(route("/atlas"), { view: "atlas" });
+  assert.deepEqual(route("/ingestion"), { view: "ingestion" });
   assert.deepEqual(route("/metadata"), { view: "library", tab: "metadata" });
   assert.deepEqual(route("/management"), { view: "library" });
   assert.deepEqual(route("/kanban"), { view: "library" });

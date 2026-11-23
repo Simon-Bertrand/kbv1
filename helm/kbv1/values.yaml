@@ -1,0 +1,344 @@
+# Nom de domaine de base pour l'environnement (ex: kb.local ou 127.0.0.1.nip.io)
+domain_name: "kb.local"
+
+# ------------------------------------------------------------------------------
+# IDENTIFIANTS HTTP BASIC AUTH (PDFPARSE, FILESERVER, KM-FRONTEND)
+# ------------------------------------------------------------------------------
+basicAuth:
+  # 1. Studio d'extraction PDF (FastAPI)
+  # NOTE : Le mot de passe doit obligatoirement comporter >= 16 caractères
+  pdfparse:
+    user: "studio"
+    password: "dev-studio-password"
+
+  # 2. Explorateur web et API du Fileserver (Nginx)
+  fileserver:
+    user: "dev"
+    password: "dev"
+
+  # 3. Console d'administration KM-Frontend (FastAPI)
+  # NOTE : En dev, laisser le mot de passe vide "" désactive le Basic Auth.
+  # Renseigner un mot de passe pour l'activer (ex: "dev-console-password").
+  kmFrontend:
+    user: "admin"
+    password: ""
+
+global:
+  environment: dev
+  imageRegistry: ""
+  imageTag: ""
+  imagePullSecrets: []
+
+# ------------------------------------------------------------------------------
+# VOLUMES PARTAGÉS (Persistance & Montages locaux de dev)
+# ------------------------------------------------------------------------------
+sharedStorage:
+  # Corpus de documents (bind-mount ./data en compose)
+  corpus:
+    type: hostPath # hostPath | pvc | emptyDir
+    hostPath: /home/dev/dev/kbv1/data
+    pvcName: ""
+    size: 5Gi
+
+  # Poids des modèles d'embedding / OCR (bind-mount ./models en compose)
+  models:
+    type: hostPath # hostPath | pvc | emptyDir
+    hostPath: /home/dev/dev/kbv1/models
+    pvcName: ""
+    size: 10Gi
+
+  # Versions de documents archivées (partagé entre fileserver, indexer et km-api)
+  sourceVersions:
+    type: pvc # pvc | emptyDir
+    pvcName: ""
+    storageClassName: ""
+    size: 2Gi
+
+  # État de l'indexeur (volume indexer-state en compose)
+  indexerState:
+    type: emptyDir # emptyDir | pvc
+    pvcName: ""
+    size: 2Gi
+
+  # Assets temporaires de prévisualisation PdfParse
+  pdfparseAssets:
+    type: emptyDir # emptyDir | pvc
+    pvcName: ""
+    size: 2Gi
+
+# ------------------------------------------------------------------------------
+# 1. POSTGRESQL (Base de données pgvector & RLS)
+# ------------------------------------------------------------------------------
+postgres:
+  enabled: true
+  image:
+    repository: kbv1/postgres
+    tag: local
+    pullPolicy: IfNotPresent
+  service:
+    type: ClusterIP
+    port: 5432
+    nodePort: 30543
+  env:
+    db: knowledgebase
+    user: postgres
+  persistence:
+    type: pvc # pvc | emptyDir | hostPath
+    storageClassName: ""
+    size: 10Gi
+    pvcName: ""
+  resources:
+    limits:
+      cpu: 1000m
+      memory: 2Gi
+    requests:
+      cpu: 250m
+      memory: 512Mi
+
+# ------------------------------------------------------------------------------
+# 2. FILESERVER (Serveur de fichiers statiques & corpus Nginx sécurisé)
+# ------------------------------------------------------------------------------
+fileserver:
+  enabled: true
+  image:
+    repository: kbv1/fileserver
+    tag: local
+    pullPolicy: IfNotPresent
+  service:
+    type: ClusterIP
+    port: 8080
+    healthPort: 8081
+    nodePort: 30880
+  env:
+    allowedHosts: "*"
+    legacyVersionsRoot: "/srv/source-versions"
+    webuiPublicOrigin: "" # Si vide, déduit automatiquement: http://<subdomains.webui>.<domain_name>
+    devUser: "dev"
+  resources:
+    limits:
+      cpu: 500m
+      memory: 256Mi
+    requests:
+      cpu: 50m
+      memory: 64Mi
+
+# ------------------------------------------------------------------------------
+# 3. PDFPARSE (Studio & Moteur d'extraction PDF)
+# ------------------------------------------------------------------------------
+pdfparse:
+  enabled: true
+  image:
+    repository: kbv1/pdfparse
+    tag: local
+    pullPolicy: IfNotPresent
+  service:
+    type: ClusterIP
+    port: 8000
+    nodePort: 30080
+  env:
+    allowedHosts: "*"
+    modelsDir: "/models"
+    adminUser: "studio"
+    dataDir: "/data"
+  gpu:
+    enabled: false
+    count: 1
+  resources:
+    limits:
+      cpu: 2000m
+      memory: 4Gi
+    requests:
+      cpu: 500m
+      memory: 1Gi
+
+# ------------------------------------------------------------------------------
+# 4. ENCODER (Service d'embeddings multilingual-e5-large)
+# ------------------------------------------------------------------------------
+encoder:
+  enabled: true
+  image:
+    repository: kbv1/encoder
+    tag: local
+    pullPolicy: IfNotPresent
+  service:
+    type: ClusterIP
+    port: 8001
+    nodePort: 30801
+  env:
+    modelsDir: "/models"
+    e5Device: "cpu" # cpu | cuda
+  resources:
+    limits:
+      cpu: 2000m
+      memory: 4Gi
+    requests:
+      cpu: 500m
+      memory: 1Gi
+
+# ------------------------------------------------------------------------------
+# 5. INDEXER (Service d'indexation vectorielle et synchronisation corpus)
+# ------------------------------------------------------------------------------
+indexer:
+  enabled: true
+  image:
+    repository: kbv1/indexer
+    tag: local
+    pullPolicy: IfNotPresent
+  service:
+    type: ClusterIP
+    port: 8011
+    nodePort: 30811
+  env:
+    dataDir: "/data"
+    upstreamRoot: "/data"
+    sourceVersionsDir: "/source-versions"
+    stateDir: "/state"
+    kmSchema: "1"
+  resources:
+    limits:
+      cpu: 1000m
+      memory: 2Gi
+    requests:
+      cpu: 200m
+      memory: 512Mi
+
+# ------------------------------------------------------------------------------
+# 6. KM-API (Moteur de recherche RAG, BM25 & API interne)
+# ------------------------------------------------------------------------------
+kmApi:
+  enabled: true
+  image:
+    repository: kbv1/km-api
+    tag: local
+    pullPolicy: IfNotPresent
+  service:
+    type: ClusterIP
+    port: 8000
+    nodePort: 30800
+  env:
+    kmSchema: "1"
+    corpusRoot: "/data"
+    upstreamRoot: "/data"
+    sourceVersionsDir: "/source-versions"
+    fileserverDevUser: "dev"
+  resources:
+    limits:
+      cpu: 1000m
+      memory: 1Gi
+    requests:
+      cpu: 200m
+      memory: 256Mi
+
+# ------------------------------------------------------------------------------
+# 7. KM-FRONTEND (Console d'administration RAG & Visualisation)
+# ------------------------------------------------------------------------------
+kmFrontend:
+  enabled: true
+  image:
+    repository: kbv1/km-frontend
+    tag: local
+    pullPolicy: IfNotPresent
+  service:
+    type: ClusterIP
+    port: 8088
+    nodePort: 30088
+  env:
+    consoleUser: "admin"
+    fileserverDevUser: "dev"
+    pdfparsePort: "8000"
+    agentUrl: "http://km-agent:8086"
+  resources:
+    limits:
+      cpu: 500m
+      memory: 512Mi
+    requests:
+      cpu: 100m
+      memory: 128Mi
+
+# ------------------------------------------------------------------------------
+# 8. WEBUI (Application utilisateur Chat RAG conversationnel)
+# ------------------------------------------------------------------------------
+webui:
+  enabled: true
+  image:
+    repository: kbv1/webui
+    tag: local
+    pullPolicy: IfNotPresent
+  service:
+    type: ClusterIP
+    port: 3000
+    targetPort: 4173
+    nodePort: 30000
+  env:
+    nodeEnv: "production"
+    chatSeconds: "180"
+    searchMode: "hybrid"
+    authMode: admin # admin | oidc
+    authUrl: "" # Si vide, déduit automatiquement: http://<subdomains.webui>.<domain_name>
+    fileserverPublicUrl: "" # Si vide, déduit automatiquement: http://<subdomains.fileserver>.<domain_name>
+    authTrustHost: "true"
+    trustProxy: "true"
+    agentUrl: "http://km-agent:8086"
+    rerankerUrl: "http://reranker:8002"
+  resources:
+    limits:
+      cpu: 1000m
+      memory: 1Gi
+    requests:
+      cpu: 200m
+      memory: 256Mi
+
+# ------------------------------------------------------------------------------
+# SECRETS (Valeurs de développement par défaut pour chaque composant)
+# ------------------------------------------------------------------------------
+secrets:
+  create: false
+  existingSecret: "kbv1-runtime"
+  # Mots de passe PostgreSQL
+  postgresPassword: "dev-postgres-password"
+  postgresAgentPassword: "dev-agent-password-replace-in-prod"
+  postgresKmReaderPassword: "dev-km-reader-password"
+  postgresKmWriterPassword: "dev-km-writer-password"
+  postgresWebuiPassword: "dev-webui-password"
+  # Fileserver
+  fileserverJwtSecret: "dev-fileserver-jwt-secret-very-secure-32chars"
+  fileserverUiSecret: "dev-fileserver-ui-secret-key-32chars"
+  fileserverDevPassword: "dev"
+  # PdfParse Studio
+  pdfparseAdminPassword: "dev-studio-password"
+  # WebUI
+  webuiAuthSecret: "dev-webui-auth-secret-minimum-32-characters"
+  # KM Tokens
+  kmIndexerToken: "dev-km-indexer-token"
+  kmApiToken: "dev-km-api-token"
+  kmAgentToken: "dev-km-agent-token"
+  kmConsolePassword: "" # Laisser vide en dev pour désactiver le Basic Auth sur KM-Frontend
+
+# ------------------------------------------------------------------------------
+# INGRESS (Routage par sous-domaines configurables pour les 3 frontends)
+# ------------------------------------------------------------------------------
+ingress:
+  enabled: true
+  className: "nginx"
+  annotations:
+    nginx.ingress.kubernetes.io/proxy-body-size: "100m"
+    nginx.ingress.kubernetes.io/proxy-read-timeout: "600"
+    nginx.ingress.kubernetes.io/proxy-send-timeout: "600"
+
+  # Noms des sous-domaines configurables pour chaque frontend :
+  # Le host final est généré via : <subdomain>.<domain_name>
+  # Ex : webui.kb.local, km.kb.local, studio.kb.local
+  subdomains:
+    webui: "webui"
+    kmFrontend: "km"
+    pdfparseStudio: "studio"
+    fileserver: "fileserver"
+
+  paths:
+    webui: /
+    kmFrontend: /
+    pdfparseStudio: /
+    fileserver: /
+
+  fileserverExposed: true
+  tls: []

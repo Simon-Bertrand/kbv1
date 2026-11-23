@@ -166,3 +166,20 @@ En production, renseigner `WEBUI_DATABASE_URL` ou les variables `WEBUI_DB_*`.
 Les tables WebUI, les quotas, les droits, le mot de passe SCRAM et les règles
 HBA sont installés par l’image PostgreSQL sur un volume neuf. Pour reconstruire
 la base en conservant les caches documentaires, suivre le [guide de reprise](../../ressources/TUTO_DEPLOY.md#8-initialisation-de-postgresql-et-reprise-des-caches).
+
+
+## Informations de build
+
+Le bouton d’information à côté de « Status » affiche les métadonnées publiques
+de la WebUI. Les builds lancés avec les commandes Make du dépôt transmettent le
+commit et la branche Git. Pour un build Compose direct, renseigner ces arguments
+depuis le dépôt qui fournit les sources.
+
+```sh
+docker compose -f compose.dev.yaml build \
+  --build-arg WEBUI_GIT_COMMIT="$(git rev-parse HEAD)" \
+  --build-arg WEBUI_GIT_BRANCH="$(git branch --show-current)" webui
+```
+
+La date est enregistrée à la compilation. `KB_ENV` et la version de Node.js
+proviennent du service en cours d’exécution.

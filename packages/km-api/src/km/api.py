@@ -232,18 +232,16 @@ def create_app(*, store=None, encoder=None, visual_encoder=None, reranker=None):
                 except (RuntimeError, ValueError):
                     pass
         semantic=False
-        transition=False
         if text_profile and app.state.encoder:
             try:
                 fingerprint = app.state.encoder.fingerprint
                 semantic = (text_profile['dimension'] == 1024 and text_profile['encoder_fingerprint'] == fingerprint
                             and not text_profile.get('configuration', {}).get('legacy_unverified'))
-                transition = not semantic
             except (RuntimeError,ValueError):pass
         return {'status': 'ok', 'backend': 'postgres', 'extensions': extensions,
                 'active_text_profile':text_profile['profile'] if text_profile and 'profile' in text_profile else None,
                 'capabilities': {'metadata': km, 'search_scope': km, 'visual_search_scope': km and visual,
-                                 'lexical': True, 'semantic': semantic, 'hybrid': semantic or transition,
+                                 'lexical': True, 'semantic': semantic, 'hybrid': semantic,
                                  'visual': visual}}
 
     def metadata_store():
@@ -301,13 +299,8 @@ def create_app(*, store=None, encoder=None, visual_encoder=None, reranker=None):
         try:
             mode = request.mode
             if mode != 'lexical':
-                try:
-                    vector = query_vector(app.state.encoder, db().profile('text'), request.question, 1024)
-                except IncompatibleProfile:
-                    if mode != 'hybrid':
-                        raise
-                    mode = 'lexical'
-            reranker = app.state.reranker
+                vector = query_vector(app.state.encoder, db().profile('text'), request.question, 1024)
+            reranker = app.state.reranker if request.rerank else None
             candidate_limit = max(request.limit, rerank_candidates) if reranker else request.limit
             scope = search_scope(request)
             store = db()
@@ -320,7 +313,7 @@ def create_app(*, store=None, encoder=None, visual_encoder=None, reranker=None):
 
                 try:
                     result = reranker.search(
-                        {**request.model_dump(exclude={'type_document_ids', 'perimeter_code', 'type_document_labels', 'date_filters'}),
+                        {**request.model_dump(exclude={'type_document_ids', 'perimeter_code', 'type_document_labels', 'date_filters', 'rerank'}),
                          'mode': mode, 'candidates': candidate_limit,
                          'vector': json.loads(vector) if vector else None, 'fingerprint': fingerprint,
                          'failure_mode': rerank_failure_mode},
@@ -344,9 +337,6 @@ def create_app(*, store=None, encoder=None, visual_encoder=None, reranker=None):
 
                     result = rerank_hits(result, request.question, request.limit, reranker,
                                          failure_mode=rerank_failure_mode)
-            if mode != request.mode:
-                result['retrieval'] = {'requested': request.mode, 'effective': mode,
-                                       'reason': 'active_profile_encoder_mismatch'}
             return result
         except RuntimeError as exc:
             raise HTTPException(503, str(exc)) from exc

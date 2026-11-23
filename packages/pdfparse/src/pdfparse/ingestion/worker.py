@@ -1,5 +1,6 @@
 """Internal HTTP worker for immutable PDF selections submitted by ingestion."""
 import asyncio
+import codecs
 import json
 import os
 from pathlib import Path
@@ -66,6 +67,8 @@ async def extract(selection: Selection, request: Request):
         slot.release()
         raise
 
+    include_logs = request.headers.get("x-ingestion-log-stream") == "1"
+
     async def stream():
         try:
             with tempfile.TemporaryDirectory(prefix='pdfparse-job-') as folder:
@@ -74,17 +77,44 @@ async def extract(selection: Selection, request: Request):
                 proc = await asyncio.create_subprocess_exec(
                     *extraction_command(root, manifest),
                     start_new_session=True,
+                    env={**os.environ, "PYTHONUNBUFFERED": "1"} if include_logs else None,
+                    stdout=asyncio.subprocess.PIPE if include_logs else None,
+                    stderr=asyncio.subprocess.STDOUT if include_logs else None,
                 )
                 try:
-                    while proc.returncode is None:
-                        if await request.is_disconnected():
-                            return
-                        yield '\n'
-                        await asyncio.sleep(1)
+                    if proc.stdout is None:
+                        while proc.returncode is None:
+                            yield '\n'
+                            await asyncio.sleep(1)
+                    else:
+                        # Keep a single pending read across heartbeats and drain output before the exit frame.
+                        decoder = codecs.getincrementaldecoder("utf-8")(errors="replace")
+                        read = asyncio.create_task(proc.stdout.read(4096))
+                        try:
+                            while True:
+                                done, _ = await asyncio.wait((read,), timeout=1)
+                                if not done:
+                                    yield '\n'
+                                    continue
+                                chunk = read.result()
+                                message = decoder.decode(chunk, final=not chunk)
+                                if message:
+                                    print(message, end="", flush=True)
+                                    yield json.dumps({"log": message}) + '\n'
+                                if not chunk:
+                                    break
+                                read = asyncio.create_task(proc.stdout.read(4096))
+                        finally:
+                            read.cancel()
+                            await asyncio.gather(read, return_exceptions=True)
+                    await proc.wait()
                     yield json.dumps({'exit_code': proc.returncode}) + '\n'
                 finally:
                     with CancelScope(shield=True):
-                        await stop(proc)
+                        if proc.stdout is None:
+                            await stop(proc)
+                        else:
+                            await asyncio.gather(stop(proc), proc.stdout.read())
         finally:
             slot.release()
 

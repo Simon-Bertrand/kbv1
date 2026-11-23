@@ -2,7 +2,8 @@ CREATE INDEX IF NOT EXISTS km_profile_units_document_idx ON rag.km_profile_units
 CREATE INDEX IF NOT EXISTS km_profile_units_handle_idx ON rag.km_profile_units(profile,md5(unit_id));
 CREATE INDEX IF NOT EXISTS km_profile_documents_handle_idx ON rag.km_profile_documents(profile,md5(document_id));
 CREATE INDEX IF NOT EXISTS km_profile_documents_type_idx ON rag.km_profile_documents(profile,type_document_id,document_id);
-CREATE INDEX IF NOT EXISTS km_profile_units_lexical_idx ON rag.km_profile_units USING gin(lexical);
+CREATE INDEX IF NOT EXISTS km_profile_units_bm25_idx ON rag.km_profile_units
+    USING bm25 ((coalesce(record->>'text', ''))) WITH (text_config='simple');
 CREATE INDEX IF NOT EXISTS km_text_vectors_hnsw_idx ON rag.km_text_embeddings USING hnsw(embedding rag.vector_cosine_ops);
 CREATE INDEX IF NOT EXISTS km_chunk_indexing_current_idx
     ON rag.km_chunk_indexing(document_id,status,chunk_id) WHERE is_current;

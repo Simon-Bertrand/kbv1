@@ -1,0 +1,22 @@
+{{- if .Values.indexer.enabled }}
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "kbv1.fullname" . }}-indexer
+  labels:
+    {{- include "kbv1.labels" . | nindent 4 }}
+    app.kubernetes.io/component: indexer
+spec:
+  type: {{ .Values.indexer.service.type }}
+  ports:
+    - port: {{ .Values.indexer.service.port }}
+      targetPort: 8011
+      protocol: TCP
+      name: http
+      {{- if and (eq .Values.indexer.service.type "NodePort") .Values.indexer.service.nodePort }}
+      nodePort: {{ .Values.indexer.service.nodePort }}
+      {{- end }}
+  selector:
+    {{- include "kbv1.selectorLabels" . | nindent 4 }}
+    app.kubernetes.io/component: indexer
+{{- end }}

@@ -197,3 +197,21 @@ def test_shared_client_streams_two_large_responses_concurrently(gateway):
         responses = list(requests.map(client.get, paths))
     assert all(response.status_code == 200 for response in responses)
     assert all(len(response.content) == 17 * 1024 * 1024 for response in responses)
+
+
+def test_ingestion_api_relay_routes(gateway):
+    client, calls, _ = gateway
+    res_status = client.get('/api/ingestion/status')
+    assert res_status.status_code == 200
+    assert calls[-1][1] == '/api/status'
+
+    res_dag = client.get('/api/ingestion/dag')
+    assert res_dag.status_code == 200
+    assert calls[-1][1] == '/api/dag'
+
+    res_run = client.post('/api/ingestion/pipeline/run', json={'force': True})
+    assert res_run.status_code == 200
+    assert calls[-1][0] == 'POST'
+    assert calls[-1][1] == '/api/pipeline/run'
+    assert calls[-1][2] == {'force': True}
+

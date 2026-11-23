@@ -1,0 +1,20 @@
+apiVersion: v2
+name: kbv1
+description: Helm Chart complet pour la stack de développement KBv1 (équivalent compose.dev.yaml)
+type: application
+version: 0.1.0
+appVersion: "1.0.0"
+keywords:
+  - kbv1
+  - rag
+  - dev
+  - postgres
+  - fileserver
+  - pdfparse
+  - encoder
+  - indexer
+  - km-api
+  - km-frontend
+  - webui
+maintainers:
+  - name: dev

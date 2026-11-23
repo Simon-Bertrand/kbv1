@@ -1,0 +1,107 @@
+{{- if .Values.pdfparse.enabled }}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "kbv1.fullname" . }}-pdfparse
+  labels:
+    {{- include "kbv1.labels" . | nindent 4 }}
+    app.kubernetes.io/component: pdfparse
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      {{- include "kbv1.selectorLabels" . | nindent 6 }}
+      app.kubernetes.io/component: pdfparse
+  template:
+    metadata:
+      labels:
+        {{- include "kbv1.selectorLabels" . | nindent 8 }}
+        app.kubernetes.io/component: pdfparse
+    spec:
+      {{- with .Values.global.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      containers:
+        - name: pdfparse
+          image: {{ include "kbv1.image" (dict "root" . "image" .Values.pdfparse.image) | quote }}
+          imagePullPolicy: {{ .Values.pdfparse.image.pullPolicy }}
+          ports:
+            - name: http
+              containerPort: 8000
+              protocol: TCP
+          env:
+            - name: KB_ENV
+              value: {{ .Values.global.environment | default "dev" | quote }}
+            - name: ALLOWED_HOSTS
+              value: {{ tpl .Values.pdfparse.env.allowedHosts . | quote }}
+            - name: MODELS_DIR
+              value: {{ .Values.pdfparse.env.modelsDir | quote }}
+            - name: DATA_DIR
+              value: {{ .Values.pdfparse.env.dataDir | quote }}
+            - name: PDFPARSE_ADMIN_USER
+              value: {{ default .Values.pdfparse.env.adminUser .Values.basicAuth.pdfparse.user | quote }}
+            - name: PDFPARSE_ADMIN_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "kbv1.secretName" . }}
+                  key: PDFPARSE_ADMIN_PASSWORD
+          volumeMounts:
+            - name: corpus-storage
+              mountPath: {{ .Values.pdfparse.env.dataDir }}
+            - name: models-storage
+              mountPath: {{ .Values.pdfparse.env.modelsDir }}
+              readOnly: true
+            - name: assets-storage
+              mountPath: /assets
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 8000
+            initialDelaySeconds: 15
+            periodSeconds: 20
+            timeoutSeconds: 5
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 8000
+            initialDelaySeconds: 10
+            periodSeconds: 10
+            timeoutSeconds: 5
+          resources:
+            {{- toYaml .Values.pdfparse.resources | nindent 12 }}
+            {{- if .Values.pdfparse.gpu.enabled }}
+            limits:
+              nvidia.com/gpu: {{ .Values.pdfparse.gpu.count | quote }}
+            {{- end }}
+      volumes:
+        - name: corpus-storage
+          {{- if eq .Values.sharedStorage.corpus.type "pvc" }}
+          persistentVolumeClaim:
+            claimName: {{ if .Values.sharedStorage.corpus.pvcName }}{{ .Values.sharedStorage.corpus.pvcName }}{{ else }}{{ include "kbv1.fullname" . }}-corpus{{ end }}
+          {{- else if eq .Values.sharedStorage.corpus.type "hostPath" }}
+          hostPath:
+            path: {{ .Values.sharedStorage.corpus.hostPath }}
+            type: Directory
+          {{- else }}
+          emptyDir: {}
+          {{- end }}
+        - name: models-storage
+          {{- if eq .Values.sharedStorage.models.type "pvc" }}
+          persistentVolumeClaim:
+            claimName: {{ if .Values.sharedStorage.models.pvcName }}{{ .Values.sharedStorage.models.pvcName }}{{ else }}{{ include "kbv1.fullname" . }}-models{{ end }}
+          {{- else if eq .Values.sharedStorage.models.type "hostPath" }}
+          hostPath:
+            path: {{ .Values.sharedStorage.models.hostPath }}
+            type: Directory
+          {{- else }}
+          emptyDir: {}
+          {{- end }}
+        - name: assets-storage
+          {{- if eq .Values.sharedStorage.pdfparseAssets.type "pvc" }}
+          persistentVolumeClaim:
+            claimName: {{ if .Values.sharedStorage.pdfparseAssets.pvcName }}{{ .Values.sharedStorage.pdfparseAssets.pvcName }}{{ else }}{{ include "kbv1.fullname" . }}-pdfparse-assets{{ end }}
+          {{- else }}
+          emptyDir: {}
+          {{- end }}
+{{- end }}

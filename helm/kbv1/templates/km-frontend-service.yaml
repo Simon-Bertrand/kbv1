@@ -2,9 +2,9 @@
 apiVersion: v1
 kind: Service
 metadata:
-  name: {{ include "kbv1-frontends.fullname" . }}-km-frontend
+  name: {{ include "kbv1.fullname" . }}-km-frontend
   labels:
-    {{- include "kbv1-frontends.labels" . | nindent 4 }}
+    {{- include "kbv1.labels" . | nindent 4 }}
     app.kubernetes.io/component: km-frontend
 spec:
   type: {{ .Values.kmFrontend.service.type }}
@@ -17,6 +17,6 @@ spec:
       nodePort: {{ .Values.kmFrontend.service.nodePort }}
       {{- end }}
   selector:
-    {{- include "kbv1-frontends.selectorLabels" . | nindent 4 }}
+    {{- include "kbv1.selectorLabels" . | nindent 4 }}
     app.kubernetes.io/component: km-frontend
 {{- end }}

@@ -121,9 +121,8 @@ class CacheReader:
                     item.pop('pdfparse_external_asset', None)
                     if external:
                         item['pdfparse_external_asset'] = True
-        markdown=read('document.md').decode('utf-8') if 'document.md' in files else None
         return {'document_id':sha,'source_sha256':sha,'filepath':upstream_path,
-            'chunks':chunks,'visuals':visuals,'markdown':markdown,
+            'chunks':chunks,'visuals':visuals,
             'metadata':{'pdfparse_manifest':prep,'pdfparse_cache_reused':True,
                 'pdfparse_source_sha256':sha,'pdfparse_cache_key':directory.name,
                 'pdfparse_cache_path':relative+'.pdfparsecache/'+directory.name,

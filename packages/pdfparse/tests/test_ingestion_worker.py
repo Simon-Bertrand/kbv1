@@ -1,5 +1,6 @@
 import asyncio
 import hashlib
+import json
 import sys
 
 import httpx
@@ -21,7 +22,7 @@ async def test_worker_processes_only_archived_selection(tmp_path, monkeypatch):
 
     def command(root, manifest):
         assert root == tmp_path
-        script = 'import json, sys; assert json.load(open(sys.argv[1])) == {sys.argv[2]: sys.argv[3]}'
+        script = 'import json, sys; assert json.load(open(sys.argv[1])) == {sys.argv[2]: sys.argv[3]}; print("extraction")'
         return sys.executable, '-c', script, str(manifest), str(source), digest
 
     monkeypatch.setattr(worker, 'extraction_command', command)
@@ -29,6 +30,11 @@ async def test_worker_processes_only_archived_selection(tmp_path, monkeypatch):
         response = await client.post('/extract', json={str(source): digest})
         assert response.status_code == 200
         assert response.text.strip() == '{"exit_code": 0}'
+        response = await client.post('/extract', json={str(source): digest},
+                                     headers={'X-Ingestion-Log-Stream': '1'})
+        frames = [json.loads(line) for line in response.text.splitlines() if line]
+        assert any('extraction' in frame.get('log', '') for frame in frames[:-1])
+        assert frames[-1] == {'exit_code': 0}
         response = await client.post('/extract', json={str(source): '0' * 64})
         assert response.status_code == 422
         assert not worker.slot.locked()

@@ -5,6 +5,9 @@ services:
       network: none
       pull: false
       context: .
+      args:
+        WEBUI_GIT_COMMIT: ${WEBUI_GIT_COMMIT:-}
+        WEBUI_GIT_BRANCH: ${WEBUI_GIT_BRANCH:-}
     image: knowledgebase/webui:local
     environment:
       KM_AGENT_SERVICE_TOKEN: ${KM_AGENT_SERVICE_TOKEN:-}

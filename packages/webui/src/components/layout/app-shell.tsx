@@ -10,23 +10,49 @@ import { Dialog } from '../ui/dialog';
 import { useTheme } from './use-theme';
 import { useSidebar } from './use-sidebar';
 import { Sidebar } from './sidebar';
-export function AppShell({ children }: { children: ReactNode }) {
+export function AppShell({ children, information }: {
+  children: ReactNode;
+  information: readonly { label: string; value: string }[];
+}) {
   const { chat } = useRenoActions();
   const persistent = useChatSelector((state) => state.persistent);
   const sidebar = useSidebar();
   const { theme, setTheme } = useTheme();
   const router = useRouter();
   const pathname = usePathname();
+  const [agentAvailable, setAgentAvailable] = useState(false);
   const [drawer, setDrawer] = useState(false);
   const [settings, setSettings] = useState(false);
+  const [infoOpen, setInfoOpen] = useState(false);
   const navigate = () => {
     setDrawer(false);
     router.push('/');
   };
   const newChat = () => {
+    if (!agentAvailable) return;
     chat.newConversation();
     navigate();
   };
+  useEffect(() => {
+    const controller = new AbortController();
+    const check = async () => {
+      try {
+        const response = await fetch('/api/agent/status', { cache: 'no-store', signal: controller.signal });
+        const available = response.ok && (await response.json()).available === true;
+        if (!controller.signal.aborted) setAgentAvailable(available);
+      } catch {
+        if (!controller.signal.aborted) setAgentAvailable(false);
+      }
+    };
+    void check();
+    const timer = window.setInterval(() => {
+      if (document.visibilityState === 'visible') void check();
+    }, 5 * 60_000);
+    return () => {
+      controller.abort();
+      window.clearInterval(timer);
+    };
+  }, [pathname]);
   useEffect(() => {
     if (location.hash === '#catalog') router.replace('/catalog');
     else if (location.hash.startsWith('#knowledge')) router.replace('/');
@@ -36,13 +62,15 @@ export function AppShell({ children }: { children: ReactNode }) {
       if (!(event.metaKey || event.ctrlKey) || document.querySelector('dialog[open]')) return;
       if (event.key.toLowerCase() === 'k') {
         event.preventDefault();
-        chat.newConversation();
-        router.push('/');
+        if (agentAvailable) {
+          chat.newConversation();
+          router.push('/');
+        }
       }
     };
     window.addEventListener('keydown', key);
     return () => window.removeEventListener('keydown', key);
-  }, [chat, router]);
+  }, [agentAvailable, chat, router]);
   return (
     <div
       className={`app-shell ${sidebar.dragging ? 'is-resizing-sidebar' : ''}`}
@@ -50,6 +78,7 @@ export function AppShell({ children }: { children: ReactNode }) {
     >
       <Sidebar
         state={sidebar}
+        agentAvailable={agentAvailable}
         open={drawer}
         onOpenChange={setDrawer}
         onSettings={() => {
@@ -58,6 +87,7 @@ export function AppShell({ children }: { children: ReactNode }) {
         }}
         onNew={newChat}
         onSelect={(id) => {
+          if (!agentAvailable) return;
           chat.select(id);
           navigate();
         }}
@@ -104,10 +134,22 @@ export function AppShell({ children }: { children: ReactNode }) {
             <span className="footer-dot">{copy.navigation.footerSeparator}</span>
             {copy.navigation.assistant}
           </span>
-          <Link href="/status" prefetch={false} aria-current={pathname === '/status' ? 'page' : undefined}>{copy.serviceStatus.title}</Link>
-          <span className="footer-signature">{copy.navigation.developpeParLEquipeReno}</span>
+          <div className="app-footer-actions">
+            <Link href="/status" prefetch={false} aria-current={pathname === '/status' ? 'page' : undefined}>{copy.serviceStatus.title}</Link>
+            <IconButton icon="info" label={copy.applicationInfo.title} title={copy.applicationInfo.title}
+              aria-haspopup="dialog" aria-controls="application-info-dialog" onClick={() => setInfoOpen(true)} />
+          </div>
         </footer>
       </div>
+      <Dialog id="application-info-dialog" title={copy.applicationInfo.title}
+        open={infoOpen} onOpenChange={setInfoOpen} lightDismiss>
+        <dl className="app-build-information">
+          {information.map(({ label, value }) => <div key={label}>
+            <dt>{label}</dt>
+            <dd>{value}</dd>
+          </div>)}
+        </dl>
+      </Dialog>
       <Dialog
         id="settings-dialog"
         title={copy.common.settings}

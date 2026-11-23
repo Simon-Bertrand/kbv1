@@ -221,21 +221,21 @@ def filtered_search(conditions):
                 SELECT pd.profile,pd.document_id,pd.filepath,pd.metadata
                 FROM rag.km_profile_documents pd WHERE """ + ' AND '.join(conditions) + """
             ), lexical AS MATERIALIZED (
-                SELECT u.unit_id,ts_rank_cd(u.lexical,websearch_to_tsquery('simple',%s)) AS relevance
+                SELECT u.unit_id,coalesce(u.record->>'text','') OPERATOR(rag.<@>) rag.to_bm25query(%s,'rag.km_profile_units_bm25_idx') AS distance
                 FROM rag.km_profile_units u JOIN allowed d USING(profile,document_id)
-                WHERE u.kind IN ('chunk','markdown') AND %s<>'semantic'
-                  AND u.lexical @@ websearch_to_tsquery('simple',%s)
-                ORDER BY relevance DESC,u.unit_id LIMIT %s
+                WHERE u.kind = 'chunk' AND %s<>'semantic'
+                  AND rag.has_physical_page(u.record)
+                ORDER BY distance LIMIT %s
             ), semantic AS MATERIALIZED (
                 SELECT e.chunk_id,e.embedding OPERATOR(rag.<=>) %s::rag.vector AS distance
                 FROM rag.km_text_embeddings e
                 JOIN rag.km_profile_units u ON u.profile=e.profile AND u.unit_id=e.chunk_id
                 JOIN allowed d ON d.profile=u.profile AND d.document_id=u.document_id
-                WHERE %s<>'lexical'
+                WHERE %s<>'lexical' AND u.kind='chunk'
                 ORDER BY e.embedding OPERATOR(rag.<=>) %s::rag.vector,e.chunk_id LIMIT %s
             ), ranks AS (
-                SELECT l.unit_id,row_number() OVER(ORDER BY l.relevance DESC,l.unit_id) AS lr,
-                       NULL::bigint AS sr FROM lexical l
+                SELECT l.unit_id,row_number() OVER(ORDER BY l.distance,l.unit_id) AS lr,
+                       NULL::bigint AS sr FROM lexical l WHERE l.distance < 0
                 UNION ALL
                 SELECT s.chunk_id,NULL::bigint,row_number() OVER(ORDER BY s.distance,s.chunk_id) FROM semantic s
             ), fused AS (
@@ -252,12 +252,10 @@ def filtered_search(conditions):
         """
 
 
-def document_units(km):
-    extra = " UNION ALL SELECT 'markdown',unit_id,document_id,record FROM rag.km_search_units WHERE document_id=%s AND kind='markdown'" if km else ''
-    return """
-        SELECT 'chunk' AS kind,chunk_id AS id,document_id,record FROM rag.chunks WHERE document_id=%s
-        UNION ALL SELECT 'visual',visual_id,document_id,record FROM rag.visuals WHERE document_id=%s
-    """+extra
+DOCUMENT_UNITS = """
+    SELECT 'chunk' AS kind,chunk_id AS id,document_id,record FROM rag.chunks WHERE document_id=%s
+    UNION ALL SELECT 'visual',visual_id,document_id,record FROM rag.visuals WHERE document_id=%s
+"""
 
 
 def metadata_scope(predicate):
@@ -308,11 +306,6 @@ INSERT_LINKED_DOCUMENT = 'INSERT INTO rag.km_linked_documents VALUES (%s,%s,%s,%
 DELETE_SEARCH_UNITS = 'DELETE FROM rag.km_search_units WHERE document_id=%s'
 
 INSERT_SEARCH_UNIT = 'INSERT INTO rag.km_search_units VALUES (%s,%s,%s,%s,%s)'
-
-UPSERT_DOCUMENT_TEXT = ("""INSERT INTO rag.km_document_text VALUES (%s,%s,%s)
-            ON CONFLICT(document_id) DO UPDATE SET markdown=EXCLUDED.markdown,content_hash=EXCLUDED.content_hash""")
-
-DELETE_DOCUMENT_TEXT = 'DELETE FROM rag.km_document_text WHERE document_id=%s'
 
 READ_METADATA = ("""SELECT f.*,v.parent_node_id,v.version_label,v.version_folder,
                 v.info,v.version_record,v.linked_documents,v.warnings,d.original_name,d.type_document_id,
@@ -394,7 +387,6 @@ UPSERT_PROFILE_DOCUMENT = ("""INSERT INTO rag.km_profile_documents(profile,docum
         DO UPDATE SET filepath=EXCLUDED.filepath,metadata=EXCLUDED.metadata,original_name=EXCLUDED.original_name,
                       type_document_id=EXCLUDED.type_document_id,published_at=now()""")
 
-MARKDOWN_RECORDS = "SELECT unit_id,record FROM rag.km_search_units WHERE document_id=%s AND kind='markdown'"
 
 FOREIGN_PROFILE_UNIT = ("""SELECT 1 FROM rag.km_profile_units
         WHERE profile=%s AND unit_id=ANY(%s) AND document_id<>%s LIMIT 1""")

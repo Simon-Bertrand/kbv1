@@ -1,5 +1,5 @@
 'use client';
-import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
 import copy from '../../content/fr.json';
 import { formatText } from '../../content/text';
 import { createSearchClient } from '../../store/search/client';
@@ -7,6 +7,7 @@ import { searchDateFields, type DocumentType, type SearchDateFilters, type Searc
 import { PdfDocument } from '../chat/source-dialog';
 import { Button, IconButton } from '../ui/button';
 import { Icon } from '../ui/icon';
+import { Dialog } from '../ui/dialog';
 
 const text = copy.documentSearch;
 
@@ -21,7 +22,9 @@ function groupResults(results: readonly SearchHit[]) {
     id,
     anchor: `document-result-${index + 1}`,
     title: hits[0]!.source.title,
-    hits,
+    pdfOpenUrl: hits.find((hit) => hit.pdfOpenUrl)?.pdfOpenUrl,
+    hits: hits.sort((a, b) => ((a.source.pdf?.page ?? Infinity) - (b.source.pdf?.page ?? Infinity))
+      || ((a.startOffset ?? Infinity) - (b.startOffset ?? Infinity))),
   }));
 }
 
@@ -49,19 +52,37 @@ export function SearchWorkspace({ initialMode, documentTypes }: {
   const perimeters = new Map(documentTypes?.map((type) => [type.perimeter_code, type.perimeter_label]));
   const types = documentTypes?.filter((type) => !perimeter || type.perimeter_code === perimeter) ?? [];
   const submit = useRef<HTMLButtonElement>(null);
-  const [selected, setSelected] = useState<SearchHit['source'] | null>(null);
+  const advancedOptions = useRef<HTMLDetailsElement>(null);
+  const resultSummary = useRef<HTMLElement>(null);
+  const resultSection = useRef<HTMLElement>(null);
+  const [selection, setSelection] = useState<{ hit: SearchHit; revision: number } | null>(null);
+  const [passage, setPassage] = useState<{ source: SearchHit['source']; number: number } | null>(null);
+  const selected = selection?.hit.source;
   const sourcePane = useRef<HTMLElement>(null);
   const opener = useRef<HTMLButtonElement>(null);
   useEffect(() => () => client.cancel(), [client]);
   useEffect(() => {
-    const pane = sourcePane.current;
-    if (selected && pane && getComputedStyle(pane).position !== 'sticky') {
-      pane.focus({ preventScroll: true });
-      pane.scrollIntoView({ block: 'start' });
-    }
-  }, [selected]);
+    if (!selection) return;
+    sourcePane.current?.focus({ preventScroll: true });
+    resultSection.current?.scrollIntoView({ block: 'start' });
+  }, [selection]);
+
+  useEffect(() => {
+    if (state.status === 'idle') return;
+    if (state.status === 'complete') resultSummary.current?.focus({ preventScroll: true });
+    resultSection.current?.scrollIntoView({ block: 'start' });
+  }, [state.status]);
 
   const documents = useMemo(() => groupResults(state.results), [state.results]);
+  const showPassage = useCallback((id: string) => {
+    for (const { hits } of documents) {
+      const index = hits.findIndex((hit) => hit.passageId === id);
+      if (index >= 0) {
+        setPassage({ source: hits[index]!.source, number: index + 1 });
+        break;
+      }
+    }
+  }, [documents]);
   const terms = useMemo(() => new Set(submittedQuestion.toLocaleLowerCase('fr').match(/[\p{L}\p{M}\p{N}]{2,}/gu)), [submittedQuestion]);
   const isLoading = state.status === 'loading';
   const hasResults = state.results.length > 0;
@@ -73,8 +94,10 @@ export function SearchWorkspace({ initialMode, documentTypes }: {
   function search() {
     const trimmed = question.trim();
     if (!trimmed) return;
+    if (advancedOptions.current) advancedOptions.current.open = false;
     setSubmittedQuestion(trimmed);
-    setSelected(null);
+    setSelection(null);
+    setPassage(null);
     void client.search({
       question: trimmed, limit, mode,
       ...(perimeter ? { perimeter_code: perimeter } : {}),
@@ -97,28 +120,27 @@ export function SearchWorkspace({ initialMode, documentTypes }: {
         <Icon name="search" />
         <input id="document-query" type="search" required maxLength={4000} value={question}
           onChange={(event) => setQuestion(event.target.value)} placeholder={text.placeholder} />
-        <Button ref={submit} type="submit" variant="primary" disabled={!question.trim()}>{text.submit}</Button>
+        <div className="document-search-query-actions">
+          <label htmlFor="document-search-mode" className="sr-only">{text.mode}</label>
+          <select className="input" id="document-search-mode" value={mode}
+            onChange={(event) => setMode(event.target.value as SearchMode)}>
+            <option value="hybrid">{text.hybrid}</option>
+            <option value="semantic">{text.semantic}</option>
+            <option value="lexical">{text.lexical}</option>
+          </select>
+          <Button ref={submit} type="submit" variant="primary" disabled={!question.trim()}>{text.submit}</Button>
+        </div>
       </div>
       <div className="document-search-options">
-        <details>
+        <details ref={advancedOptions}>
           <summary>{text.options}<Icon name="down" /></summary>
           <div className="document-search-advanced">
-            <div className="document-search-controls">
-              <label className="field" htmlFor="document-search-mode">{text.mode}
-                <select className="input" id="document-search-mode" value={mode}
-                  onChange={(event) => setMode(event.target.value as SearchMode)}>
-                  <option value="hybrid">{text.hybrid}</option>
-                  <option value="semantic">{text.semantic}</option>
-                  <option value="lexical">{text.lexical}</option>
-                </select>
-              </label>
-              <label className="field" htmlFor="document-search-limit">{text.limit}
-                <select className="input" id="document-search-limit" value={limit}
-                  onChange={(event) => setLimit(Number(event.target.value))}>
-                  {[10, 20, 50].map((value) => <option key={value} value={value}>{value}</option>)}
-                </select>
-              </label>
-            </div>
+            <label className="field" htmlFor="document-search-limit">{text.limit}
+              <select className="input" id="document-search-limit" value={limit}
+                onChange={(event) => setLimit(Number(event.target.value))}>
+                {[10, 20, 50].map((value) => <option key={value} value={value}>{value}</option>)}
+              </select>
+            </label>
             {perimeters.size > 0 ? <>
               <label className="field">
                 {text.perimeter}
@@ -182,17 +204,23 @@ export function SearchWorkspace({ initialMode, documentTypes }: {
             </Button>
           </div>
         </details>
+      </div>
+    </form>
+
+    <section className="document-search-output" ref={resultSection} data-status={state.status}
+      aria-labelledby="document-search-results-title">
+      <header ref={resultSummary} tabIndex={-1}
+        className={state.status === 'idle' ? 'sr-only' : 'document-search-summary'}>
+        <h2 id="document-search-results-title">{text.results}</h2>
+        {hasResults && <p role="status" className="muted">{status}</p>}
+      </header>
+      {!hasResults && state.status !== 'idle' && <div className="document-search-state">
+        <Icon name="search" />
+        <p role="status" className="muted">{status}</p>
         {isLoading && <Button className="document-search-cancel" onClick={() => {
           submit.current?.focus();
           client.cancel();
         }}>{text.cancel}</Button>}
-      </div>
-    </form>
-
-    <section className="document-search-output" aria-label={text.results}>
-      <div className={state.status === 'idle' ? 'sr-only' : hasResults ? 'document-search-summary' : 'document-search-state'}>
-        {hasResults ? <h2>{text.results}</h2> : state.status !== 'idle' && <Icon name="search" />}
-        <p role="status" className="muted">{status}</p>
         {state.error && <>
           <p role="alert" className="error-text">{state.error}</p>
           <Button onClick={() => {
@@ -200,35 +228,35 @@ export function SearchWorkspace({ initialMode, documentTypes }: {
             search();
           }} disabled={!question.trim()}>{copy.common.retry}</Button>
         </>}
-      </div>
+      </div>}
       <div className="document-search-results" aria-busy={isLoading}>
-        {hasResults && <div className="document-search-list">
-          {documents.length > 1 && <nav className="document-search-index" aria-label={text.documents}>
-            <h3>{text.documents}</h3>
-            <ul>
-              {documents.map(({ id, anchor, title, hits }) => <li key={id}>
-                <a href={`#${anchor}`}><span>{title}</span><span className="document-search-index-count">{hits.length}</span></a>
-              </li>)}
-            </ul>
-          </nav>}
-          {documents.map(({ id, anchor, title, hits }) => <article className="document-search-document"
+        {hasResults && <div className="document-search-list" tabIndex={0} role="region" aria-label={text.documents}>
+          {documents.map(({ id, anchor, title, pdfOpenUrl, hits }) => <article className="document-search-document"
             id={anchor} tabIndex={-1} aria-labelledby={`${anchor}-title`} key={id}>
             <header className="document-search-document-header">
               <span className="document-search-file-icon"><Icon name="file" /></span>
-              <h3 id={`${anchor}-title`}>{title}</h3>
+              <h3 id={`${anchor}-title`}>{pdfOpenUrl
+                ? <a className="document-search-file-link" href={pdfOpenUrl} target="_blank" rel="noopener noreferrer">
+                  {title}<Icon name="external" />
+                </a> : title}</h3>
               <span className="document-search-count">{formatText(hits.length === 1 ? text.passageOne : text.passageCount, { count: hits.length })}</span>
             </header>
             <ol className="document-search-passages">
-              {hits.map(({ source }, index) => <li key={source.id}>
-                <Button className="document-search-open" aria-pressed={selected?.id === source.id}
+              {hits.map((hit, index) => <li key={hit.source.id}>
+                <Button className="document-search-open" aria-current={selected?.id === hit.source.id ? 'true' : undefined}
                   aria-controls="document-search-preview"
-                  onClick={(event) => { opener.current = event.currentTarget; setSelected(source); }}
-                  aria-label={formatText(text.openNamedPassage, { action: text.open, number: index + 1, title })}>
+                  onClick={(event) => {
+                    opener.current = event.currentTarget;
+                    setSelection((previous) => ({ hit, revision: (previous?.revision ?? 0) + 1 }));
+                  }}
+                  aria-label={formatText(text.openNamedPassage, { number: index + 1, title })}>
                   <span className="document-search-passage-heading">
-                    {source.pages && <span className="document-search-pages">{source.pages}</span>}
-                    <span className="document-search-open-label">{text.open}<Icon name="chevron" /></span>
+                    {formatText(text.evidenceNumber, { number: index + 1 })}
+                    <span className="document-search-open-label">
+                      {hit.source.pages && <span className="document-search-pages">{hit.source.pages}</span>}
+                      <Icon name="chevron" />
+                    </span>
                   </span>
-                  <Excerpt value={source.excerpt} terms={terms} />
                 </Button>
               </li>)}
             </ol>
@@ -242,17 +270,25 @@ export function SearchWorkspace({ initialMode, documentTypes }: {
               {selected && <p title={selected.title}>{selected.title}</p>}
             </div>
             {selected && <IconButton icon="close" label={text.closePreview} onClick={() => {
-              setSelected(null);
+              setSelection(null);
               opener.current?.focus();
             }} />}
           </header>
-          {selected?.pdf ? <PdfDocument key={selected.id} id="document-search-pdf"
-            reference={selected.pdf} title={selected.title} highlightCitation /> :
+          {selection && selected?.pdf ? <PdfDocument key={selection.revision} id="document-search-pdf"
+            reference={selected.pdf} title={selected.title} highlightCitation continuous focusPassageId={selection.hit.passageId} onPassageSelect={showPassage} /> :
             <p className="document-search-preview-placeholder muted">
               {selected ? text.noSourcePage : text.selectPassage}
             </p>}
         </aside>}
       </div>
     </section>
+    <Dialog id="document-search-passage" open={!!passage} onOpenChange={(open) => {
+      if (!open) setPassage(null);
+    }} title={passage ? formatText(text.evidenceNumber, { number: passage.number }) : text.indexedPassage} lightDismiss>
+      {passage && <article className="source-document">
+        <header><h3>{passage.source.title}</h3>{passage.source.pages && <span>{passage.source.pages}</span>}</header>
+        <Excerpt value={passage.source.excerpt} terms={terms} />
+      </article>}
+    </Dialog>
   </section>;
 }

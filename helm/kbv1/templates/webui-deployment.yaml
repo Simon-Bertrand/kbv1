@@ -1,0 +1,123 @@
+{{- if .Values.webui.enabled }}
+{{- $domain := .Values.domain_name | default "kb.local" -}}
+{{- $webuiHost := printf "%s.%s" .Values.ingress.subdomains.webui $domain -}}
+{{- $fileserverHost := printf "%s.%s" .Values.ingress.subdomains.fileserver $domain -}}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "kbv1.fullname" . }}-webui
+  labels:
+    {{- include "kbv1.labels" . | nindent 4 }}
+    app.kubernetes.io/component: webui
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      {{- include "kbv1.selectorLabels" . | nindent 6 }}
+      app.kubernetes.io/component: webui
+  template:
+    metadata:
+      labels:
+        {{- include "kbv1.selectorLabels" . | nindent 8 }}
+        app.kubernetes.io/component: webui
+    spec:
+      {{- with .Values.global.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      containers:
+        - name: webui
+          image: {{ include "kbv1.image" (dict "root" . "image" .Values.webui.image) | quote }}
+          imagePullPolicy: {{ .Values.webui.image.pullPolicy }}
+          ports:
+            - name: http
+              containerPort: 4173
+              protocol: TCP
+          env:
+            - name: KB_ENV
+              value: {{ .Values.global.environment | default "dev" | quote }}
+            - name: NODE_ENV
+              value: {{ .Values.webui.env.nodeEnv | default "production" | quote }}
+            - name: PORT
+              value: "4173"
+            - name: HOSTNAME
+              value: "0.0.0.0"
+            - name: WEBUI_AGENT_URL
+              value: {{ .Values.webui.env.agentUrl | quote }}
+            - name: WEBUI_KM_API_URL
+              value: {{ printf "http://%s-km-api:8000" (include "kbv1.fullname" .) | quote }}
+            - name: WEBUI_RERANKER_URL
+              value: {{ .Values.webui.env.rerankerUrl | quote }}
+            - name: WEBUI_CHAT_SECONDS
+              value: {{ .Values.webui.env.chatSeconds | quote }}
+            - name: WEBUI_SEARCH_MODE
+              value: {{ .Values.webui.env.searchMode | quote }}
+            - name: WEBUI_DB_HOST
+              value: {{ printf "%s-postgres" (include "kbv1.fullname" .) | quote }}
+            - name: WEBUI_DB_NAME
+              value: {{ .Values.postgres.env.db | quote }}
+            - name: WEBUI_DB_USER
+              value: "webui-user"
+            - name: WEBUI_DB_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "kbv1.secretName" . }}
+                  key: POSTGRES_WEBUI_PASSWORD
+            {{- $authKeys := list "WEBUI_AUTH_ADMIN_LOGIN" "WEBUI_AUTH_ADMIN_PASSWORD" }}
+            {{- if eq .Values.webui.env.authMode "oidc" }}
+            {{- $authKeys = list "WEBUI_AUTH_OIDC_ISSUER" "WEBUI_AUTH_OIDC_ID" "WEBUI_AUTH_OIDC_SECRET" }}
+            {{- end }}
+            {{- range $key := $authKeys }}
+            - name: {{ $key }}
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "kbv1.secretName" $ }}
+                  key: {{ $key }}
+            {{- end }}
+            - name: WEBUI_AUTH_URL
+              value: {{ .Values.webui.env.authUrl | default (printf "%s://%s" (ternary "https" "http" (not (empty .Values.ingress.tls))) $webuiHost) | quote }}
+            - name: WEBUI_AUTH_TRUST_HOST
+              value: {{ .Values.webui.env.authTrustHost | quote }}
+            - name: WEBUI_TRUST_PROXY
+              value: {{ .Values.webui.env.trustProxy | quote }}
+            - name: FILESERVER_INTERNAL_URL
+              value: {{ printf "http://%s-fileserver:8080" (include "kbv1.fullname" .) | quote }}
+            - name: FILESERVER_PUBLIC_URL
+              value: {{ .Values.webui.env.fileserverPublicUrl | default (printf "%s://%s" (ternary "https" "http" (not (empty .Values.ingress.tls))) $fileserverHost) | quote }}
+            - name: WEBUI_AUTH_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "kbv1.secretName" . }}
+                  key: WEBUI_AUTH_SECRET
+            - name: FILESERVER_JWT_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "kbv1.secretName" . }}
+                  key: FILESERVER_JWT_SECRET
+            - name: KM_API_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "kbv1.secretName" . }}
+                  key: KM_API_TOKEN
+            - name: KM_AGENT_SERVICE_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "kbv1.secretName" . }}
+                  key: KM_AGENT_TOKEN
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 4173
+            initialDelaySeconds: 20
+            periodSeconds: 20
+            timeoutSeconds: 8
+          readinessProbe:
+            httpGet:
+              path: /ready
+              port: 4173
+            initialDelaySeconds: 10
+            periodSeconds: 10
+            timeoutSeconds: 5
+          resources:
+            {{- toYaml .Values.webui.resources | nindent 12 }}
+{{- end }}

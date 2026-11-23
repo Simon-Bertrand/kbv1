@@ -1,4 +1,4 @@
--- One lexical index covers both contextual chunks and exact Markdown spans.
+-- BM25 ranks the original text of paginated PDF chunks.
 CREATE OR REPLACE FUNCTION rag.rag_search_km(
     p_query text,p_text_query rag.vector DEFAULT NULL,p_mode text DEFAULT 'hybrid',
     p_top_k integer DEFAULT 10,p_candidates integer DEFAULT 100,
@@ -28,7 +28,7 @@ BEGIN
     WITH lexical AS MATERIALIZED (
         SELECT u.unit_id,u.body OPERATOR(rag.<@>) rag.to_bm25query(p_query,'rag.km_units_bm25_idx') AS distance
         FROM rag.km_search_units u JOIN rag.documents d USING(document_id)
-        WHERE p_mode<>'semantic'
+        WHERE p_mode<>'semantic' AND u.kind='chunk' AND rag.has_physical_page(u.record)
           AND (p_document_ids IS NULL OR u.document_id=ANY(p_document_ids))
           AND (p_metadata IS NULL OR d.metadata @> p_metadata)
         ORDER BY u.body OPERATOR(rag.<@>) rag.to_bm25query(p_query,'rag.km_units_bm25_idx')
@@ -37,7 +37,7 @@ BEGIN
         SELECT e.chunk_id,e.embedding OPERATOR(rag.<=>) p_text_query AS distance
         FROM rag.text_embeddings e JOIN rag.km_search_units u ON u.unit_id=e.chunk_id
         JOIN rag.documents d ON d.document_id=u.document_id
-        WHERE p_mode<>'lexical'
+        WHERE p_mode<>'lexical' AND u.kind='chunk'
           AND (p_document_ids IS NULL OR u.document_id=ANY(p_document_ids))
           AND (p_metadata IS NULL OR d.metadata @> p_metadata)
         ORDER BY e.embedding OPERATOR(rag.<=>) p_text_query LIMIT p_candidates

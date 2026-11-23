@@ -12,6 +12,7 @@ function NavigationIcon({name}) {
     rag: "m16 16 5 5M18 10a8 8 0 1 1-16 0 8 8 0 0 1 16 0Z",
     traces: "M12 3v6M5 15V9h14v6M2 15h6v6H2Zm14 0h6v6h-6Z",
     library: "M4 5h16v4H4Zm0 6h16v4H4Zm0 6h16v4H4Z",
+    ingestion: "M22 12h-4l-3 9L9 3l-3 9H2",
     evaluation: "M4 3h16v18H4Zm4 5 1 1 2-2m2 1h4M8 14l1 1 2-2m2 1h4",
     atlas: "m12 2 9 5v10l-9 5-9-5V7Zm0 10 9-5M12 12 3 7m9 5v10",
   };
@@ -23,7 +24,7 @@ const ConsoleLayout = memo(function ConsoleLayout() {
       <aside className="rail">
         <a className="brand" href="/" aria-label="Accueil KM">KM</a>
         <nav aria-label="Navigation principale">
-          {[["athena","Agent"],["sources","Documents"],["rag","Recherche"],["traces","Suivi"],["library","Indexation"],["evaluation","Évaluation"],["atlas","Atlas"]].map(([id,label])=>
+          {[["athena","Agent"],["sources","Documents"],["rag","Recherche"],["traces","Suivi"],["library","Indexation"],["ingestion","Ingestion"],["evaluation","Évaluation"],["atlas","Atlas"]].map(([id,label])=>
             <button key={id} className={"nav"+(id==="athena"?" active":"")} data-view={id}><NavigationIcon name={id}/>{label}</button>
           )}
         </nav>

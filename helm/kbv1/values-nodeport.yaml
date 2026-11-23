@@ -1,0 +1,23 @@
+# Surcharge pour exposer directement les services en dev via NodePort (sans Ingress ni port-forward)
+ingress:
+  enabled: false
+
+webui:
+  service:
+    type: NodePort
+    nodePort: 30000
+
+kmFrontend:
+  service:
+    type: NodePort
+    nodePort: 30088
+
+pdfparse:
+  service:
+    type: NodePort
+    nodePort: 30080
+
+fileserver:
+  service:
+    type: NodePort
+    nodePort: 30880

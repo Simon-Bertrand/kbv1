@@ -1,0 +1,23 @@
+{{- if and .Values.webui.enabled (not (has .Values.webui.env.authMode (list "admin" "oidc"))) -}}
+{{- fail "webui.env.authMode doit valoir admin ou oidc" -}}
+{{- end -}}
+{{- if and (not .Values.secrets.create) (not .Values.secrets.existingSecret) -}}
+{{- fail "Renseigner secrets.existingSecret ou activer secrets.create" -}}
+{{- end -}}
+{{- if .Values.global.requireExternalSecret -}}
+{{- if or .Values.secrets.create (not .Values.secrets.existingSecret) -}}
+{{- fail "Le déploiement CI exige un Secret Kubernetes existant" -}}
+{{- end -}}
+{{- if and .Values.postgres.enabled (ne .Values.postgres.persistence.type "pvc") -}}
+{{- fail "Le déploiement CI exige un PVC PostgreSQL persistant" -}}
+{{- end -}}
+{{- if ne .Values.sharedStorage.sourceVersions.type "pvc" -}}
+{{- fail "Le déploiement CI exige un PVC partagé pour les versions PDF" -}}
+{{- end -}}
+{{- if not .Values.global.imagePullSecrets -}}
+{{- fail "Renseigner global.imagePullSecrets pour le registre GitLab" -}}
+{{- end -}}
+{{- end -}}
+{{- if and .Values.webui.enabled .Values.ingress.enabled (not .Values.webui.env.fileserverPublicUrl) (not (and .Values.fileserver.enabled .Values.ingress.fileserverExposed)) -}}
+{{- fail "La WebUI exige l’Ingress Fileserver ou une URL publique Fileserver explicite" -}}
+{{- end -}}

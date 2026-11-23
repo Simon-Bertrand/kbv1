@@ -23,22 +23,30 @@ test('direct search groups passages, opens the cited PDF in the source pane and 
   const options = page.locator('.document-search-options > details > summary');
   const mode = page.getByRole('combobox', { name: copy.documentSearch.mode, exact: true });
   const limit = page.getByRole('combobox', { name: copy.documentSearch.limit, exact: true });
-  await expect(page.locator('#document-search-mode')).toBeHidden();
-  await options.click();
+  await expect(mode).toBeVisible();
+  await expect(limit).toBeHidden();
   await mode.selectOption('lexical');
+  await options.click();
   await limit.selectOption('20');
   await options.click();
-  await expect(page.locator('#document-search-mode')).toBeHidden();
+  await expect(mode).toHaveValue('lexical');
+  await expect(limit).toBeHidden();
   const request = page.waitForRequest((request) => request.url().endsWith('/api/search') && request.method() === 'POST');
   const query = page.getByLabel(copy.documentSearch.query, { exact: true });
   await query.fill('pression');
   await query.press('Enter');
   expect((await request).postDataJSON()).toEqual({ question: 'pression', limit: 20, mode: 'lexical' });
   await expect(page.locator('.document-search-document')).toHaveCount(2);
+  await expect.poll(() => page.locator('.document-search-output').evaluate((section) => {
+    const viewport = section.closest('main')!.getBoundingClientRect();
+    return Math.abs(section.getBoundingClientRect().top - viewport.top);
+  })).toBeLessThan(2);
+  await expect(page.locator('.document-search-list')).toHaveCSS('overflow-y', 'auto');
   await expect(page.locator('.document-search-passages li')).toHaveCount(3);
-  await expect(page.locator('.document-search').getByRole('status')).toContainText('3 passages dans 2 documents');
-  await expect(page.locator('.document-search-excerpt').nth(1)).toContainText('<script>alert(1)</script>');
-  await expect(page.locator('.document-search-excerpt mark').first()).toHaveText('pression');
+  await expect(page.locator('.document-search').getByRole('status')).toContainText('3 preuves dans 2 documents');
+  await expect(page.locator('.document-search-list .document-search-excerpt')).toHaveCount(0);
+  await expect(page.locator('.document-search-document').first().locator('.document-search-pages'))
+    .toHaveText(['Page 1', 'Page 2']);
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
   await page.screenshot({ path: testInfo.outputPath('search-results.png'), fullPage: true, animations: 'disabled' });
   const theme = await page.locator('html').getAttribute('data-theme');
@@ -46,29 +54,33 @@ test('direct search groups passages, opens the cited PDF in the source pane and 
   await expect(page.locator('html')).toHaveAttribute('data-theme', theme === 'dark' ? 'light' : 'dark');
   await page.screenshot({ path: testInfo.outputPath('search-results-alternate-theme.png'), fullPage: true, animations: 'disabled' });
   await page.locator('#theme-toggle').click();
-  if (testInfo.project.name === 'desktop') {
-    const index = page.getByRole('navigation', { name: copy.documentSearch.documents, exact: true });
-    await index.getByRole('link', { name: /Entretien\.pdf/ }).press('Enter');
-    const result = page.getByRole('article', { name: 'Entretien.pdf', exact: true });
-    await expect(result).toBeFocused();
-    await page.keyboard.press('Tab');
-    await expect(result.getByRole('button', { name: /Ouvrir le passage/ })).toBeFocused();
-  }
-  const open = page.getByRole('button', { name: 'Ouvrir le passage 1 de « Notice de test.pdf »', exact: true });
+  await expect(page.locator('.document-search-index')).toHaveCount(0);
+  const open = page.getByRole('button', { name: 'Preuve 1 de « Notice de test.pdf »', exact: true });
   await open.click();
+  const passage = page.getByRole('dialog', { name: 'Preuve 1', exact: true });
+  await expect(passage).toBeHidden();
+  const titleLink = page.getByRole('heading', { name: 'Notice de test.pdf' }).getByRole('link');
+  await expect(titleLink).toHaveAttribute('target', '_blank');
+  const link = await page.request.get((await titleLink.getAttribute('href'))!, { maxRedirects: 0 });
+  expect(link.status()).toBe(302);
+  expect(link.headers().location).toContain('/files/');
   const preview = page.getByRole('complementary', { name: copy.documentSearch.sourcePreview });
   await expect(preview).toBeVisible();
   await expect(preview.getByText('Notice de test.pdf', { exact: true })).toBeVisible();
-  await expect(preview.locator('.pdf-paper canvas')).toBeVisible();
-  await expect(preview.locator('.pdf-citation-box')).toHaveCount(1);
+  await expect(preview.locator('.pdf-page-slot').first().locator('canvas')).toBeVisible();
+  await expect(preview.locator('.pdf-page-slot').first().locator('.pdf-citation-box[data-selected=true]')).toHaveCount(1);
+  await preview.locator('.pdf-page-slot').first().getByRole('button', { name: copy.documentSearch.indexedPassage }).click();
+  await expect(passage).toContainText('La pression maximale est de 12 bar.');
+  await page.keyboard.press('Escape');
+  await expect(passage).toBeHidden();
   await expect(preview.locator('#pdf-page')).toHaveValue('1');
-  await expect(open).toHaveAttribute('aria-pressed', 'true');
+  await expect(open).toHaveAttribute('aria-current', 'true');
   await page.screenshot({ path: testInfo.outputPath('search-source-pane.png'), animations: 'disabled' });
   const stage = preview.locator('.pdf-stage');
   await stage.press('ArrowRight');
   await expect(preview.locator('#pdf-page')).toHaveValue('2');
   await expect(stage).toHaveAttribute('aria-busy', 'false');
-  await expect(preview.locator('.pdf-citation-box')).toHaveCount(0);
+  await expect(preview.locator('.pdf-page-slot').nth(1).locator('.pdf-citation-box')).toHaveCount(1);
   await preview.getByRole('button', { name: copy.documentSearch.closePreview }).click();
   await expect(open).toBeFocused();
   await page.locator('.workspace-views').getByRole('link', { name: copy.documentSearch.agent, exact: true }).click();
@@ -108,6 +120,15 @@ test('loading can be cancelled and followed by another search', async ({ page })
 
 test('the footer opens service status with online and unavailable indicators', async ({ page }) => {
   await openSearch(page);
+  await page.getByRole('button', { name: copy.applicationInfo.title, exact: true }).click();
+  const info = page.getByRole('dialog', { name: copy.applicationInfo.title, exact: true });
+  await expect(info).toContainText(copy.applicationInfo.commit);
+  await expect(info).toContainText(copy.applicationInfo.buildDate);
+  await expect(info).toContainText(copy.applicationInfo.environment);
+  await expect(info.getByText('dev', { exact: true })).toBeVisible();
+  await expect(info).toContainText(copy.applicationInfo.pdfjs);
+  await page.keyboard.press('Escape');
+  await expect(info).toBeHidden();
   await page.getByRole('link', { name: copy.serviceStatus.title, exact: true }).click();
   await expect(page).toHaveURL(/\/status$/);
   await expect(page.getByRole('heading', { name: copy.serviceStatus.title, exact: true })).toBeVisible();
@@ -148,6 +169,25 @@ test('filters documentary search by edition, approval and repeal dates', async (
   expect((await request).postDataJSON()).toMatchObject({
     date_filters: { edition: { from: '2025-01-01' }, approval: { to: '2025-02-01' }, repeal: { from: '2025-04-01' } },
   });
+  await expect(page.locator('.document-search-options > details')).toHaveJSProperty('open', false);
+  await expect(page.locator('.document-search-summary')).toBeInViewport();
+  await page.getByText(copy.documentSearch.options, { exact: true }).click();
+  await expect(page.getByRole('group', { name: 'Édition' }).getByLabel('Du', { exact: true })).toHaveValue('2025-01-01');
   await expect(page.locator('.document-search-document')).toHaveCount(1);
   await expect(page.getByRole('heading', { name: 'Notice de test.pdf' })).toBeVisible();
+});
+
+
+test('orders evidence on the same page by its position in the document', async ({ page }) => {
+  await openSearch(page);
+  const query = page.getByLabel(copy.documentSearch.query, { exact: true });
+  await query.fill('ordre');
+  await query.press('Enter');
+  const result = page.getByRole('article', { name: 'Notice de test.pdf', exact: true });
+  await expect(result.locator('.document-search-pages')).toHaveText(['Page 1', 'Page 1']);
+  await result.getByRole('button', { name: 'Preuve 1 de « Notice de test.pdf »', exact: true }).click();
+  await expect(page.getByRole('dialog', { name: 'Preuve 1', exact: true })).toBeHidden();
+  await page.locator('.pdf-page-slot').first().locator('.pdf-citation-box[data-selected=true]').click();
+  await expect(page.getByRole('dialog', { name: 'Preuve 1', exact: true }))
+    .toContainText('La pression maximale est de 12 bar.');
 });

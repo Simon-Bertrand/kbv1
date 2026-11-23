@@ -1,0 +1,70 @@
+{{- if .Values.encoder.enabled }}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "kbv1.fullname" . }}-encoder
+  labels:
+    {{- include "kbv1.labels" . | nindent 4 }}
+    app.kubernetes.io/component: encoder
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      {{- include "kbv1.selectorLabels" . | nindent 6 }}
+      app.kubernetes.io/component: encoder
+  template:
+    metadata:
+      labels:
+        {{- include "kbv1.selectorLabels" . | nindent 8 }}
+        app.kubernetes.io/component: encoder
+    spec:
+      {{- with .Values.global.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      containers:
+        - name: encoder
+          image: {{ include "kbv1.image" (dict "root" . "image" .Values.encoder.image) | quote }}
+          imagePullPolicy: {{ .Values.encoder.image.pullPolicy }}
+          ports:
+            - name: http
+              containerPort: 8001
+              protocol: TCP
+          env:
+            - name: MODELS_DIR
+              value: {{ .Values.encoder.env.modelsDir | quote }}
+            - name: E5_DEVICE
+              value: {{ .Values.encoder.env.e5Device | quote }}
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 8001
+            initialDelaySeconds: 30
+            periodSeconds: 15
+            timeoutSeconds: 5
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 8001
+            initialDelaySeconds: 10
+            periodSeconds: 10
+            timeoutSeconds: 5
+          volumeMounts:
+            - name: models-storage
+              mountPath: {{ .Values.encoder.env.modelsDir }}
+              readOnly: true
+          resources:
+            {{- toYaml .Values.encoder.resources | nindent 12 }}
+      volumes:
+        - name: models-storage
+          {{- if eq .Values.sharedStorage.models.type "pvc" }}
+          persistentVolumeClaim:
+            claimName: {{ if .Values.sharedStorage.models.pvcName }}{{ .Values.sharedStorage.models.pvcName }}{{ else }}{{ include "kbv1.fullname" . }}-models{{ end }}
+          {{- else if eq .Values.sharedStorage.models.type "hostPath" }}
+          hostPath:
+            path: {{ .Values.sharedStorage.models.hostPath }}
+            type: Directory
+          {{- else }}
+          emptyDir: {}
+          {{- end }}
+{{- end }}

@@ -69,7 +69,7 @@ test('dispatch only notifies subscribers when the reducer returns a new state', 
   const before = store.getState();
   let calls = 0;
   const off = store.subscribe(() => calls++);
-  store.dispatch({ type: 'sidebar/resized', width: 224 });
+  store.dispatch({ type: 'sidebar/resized', width: before.sidebar.width });
   assert.equal(store.getState(), before);
   assert.equal(calls, 0);
   store.dispatch({ type: 'sidebar/toggled' });
