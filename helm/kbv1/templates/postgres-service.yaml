@@ -1,22 +1,35 @@
+{{- /* Rend cette ressource uniquement si la fonctionnalité est activée. */ -}}
 {{- if .Values.postgres.enabled }}
+# Version de l’API utilisée pour cette ressource.
 apiVersion: v1
+# Type de ressource que Kubernetes doit créer.
 kind: Service
+# Identité et étiquettes de la ressource.
 metadata:
+  # Nom de la ressource dans le namespace de la release.
   name: {{ include "kbv1.fullname" . }}-postgres
+  # Étiquettes Helm et identité de la release.
   labels:
     {{- include "kbv1.labels" . | nindent 4 }}
+    # Étiquette qui distingue ce composant des autres pods de la release.
     app.kubernetes.io/component: postgres
+# Configuration souhaitée pour cette ressource.
 spec:
-  type: {{ .Values.postgres.service.type }}
+  # Expose une IP interne au cluster.
+  type: ClusterIP
+  # Ports utilisés par cette ressource.
   ports:
+    # Port du Service auquel les autres pods se connectent.
     - port: {{ .Values.postgres.service.port }}
+      # Port d’écoute dans le pod vers lequel le Service transmet le trafic.
       targetPort: 5432
+      # Protocole de transport du port.
       protocol: TCP
+      # Nom de la ressource dans le namespace de la release.
       name: postgres
-      {{- if and (eq .Values.postgres.service.type "NodePort") .Values.postgres.service.nodePort }}
-      nodePort: {{ .Values.postgres.service.nodePort }}
-      {{- end }}
+  # Étiquettes des pods que cette ressource sélectionne.
   selector:
     {{- include "kbv1.selectorLabels" . | nindent 4 }}
+    # Étiquette qui distingue ce composant des autres pods de la release.
     app.kubernetes.io/component: postgres
 {{- end }}

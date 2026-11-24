@@ -1,9 +1,13 @@
-FROM knowledgebase/base-postgres:local
+ARG BUILD_IMAGE_PREFIX=knowledgebase
+FROM ${BUILD_IMAGE_PREFIX}/base-pg-textsearch:local AS base-pg-textsearch
+FROM ${BUILD_IMAGE_PREFIX}/base-pgvectorscale:local AS base-pgvectorscale
+FROM ${BUILD_IMAGE_PREFIX}/base-pgvector:local AS base-pgvector
+FROM ${BUILD_IMAGE_PREFIX}/base-postgres:local
 
 # Extensions PostgreSQL
-COPY --from=knowledgebase/base-pgvector:local / /
-COPY --from=knowledgebase/base-pgvectorscale:local / /
-COPY --from=knowledgebase/base-pg-textsearch:local / /
+COPY --from=base-pgvector / /
+COPY --from=base-pgvectorscale / /
+COPY --from=base-pg-textsearch / /
 # Construire avec database/ comme contexte : docker build -t knowledgebase/postgres:local database/
 COPY sql/rag/00_schema.sql /tmp/sql/00-schema/00_schema.sql
 COPY sql/rag/extensions/ /tmp/sql/01-extensions/
@@ -14,14 +18,12 @@ COPY sql/rag/security/ /tmp/sql/35-security/
 COPY sql/rag/tests/ /tmp/sql/40-tests/
 COPY sql/rag/security/01_agent.sql /usr/local/share/rag-agent.sql
 COPY sql/rag/security/03_reranker.sql /usr/local/share/km-reranker-role.sql
-COPY --chmod=0755 init-km-reranker.sh /usr/local/bin/init-km-reranker
-COPY --chmod=0755 init-km.sh /usr/local/bin/init-km
-COPY --chmod=0755 init-agent.sh /usr/local/bin/init-rag-agent
+COPY sql/bootstrap/ /usr/local/share/database-bootstrap/
+COPY --chmod=0755 init-roles.sh /usr/local/libexec/init-database-roles
 COPY sql/webui/00_schema.sql /tmp/sql/00-webui-schema/00_schema.sql
 COPY sql/webui/10_tables.sql /tmp/sql/10-webui-tables/10_tables.sql
 COPY sql/webui/35_security.sql /tmp/sql/35-webui-security/35_security.sql
 COPY sql/webui/36_isolation.sql /tmp/sql/36-webui-isolation/36_isolation.sql
-COPY --chmod=0755 init-webui.sh /usr/local/bin/init-webui
 
 # L'entrypoint officiel exécute les scripts à plat dans l'ordre alphabétique,
 # uniquement à la première initialisation (répertoire de données vide).
@@ -36,13 +38,15 @@ RUN set -eu; \
     done; \
     rm -r /tmp/sql
 
-RUN ln -s /usr/local/bin/init-km /docker-entrypoint-initdb.d/56-km.sh && \
-    ln -s /usr/local/bin/init-rag-agent /docker-entrypoint-initdb.d/50-agent.sh && \
-    ln -s /usr/local/bin/init-webui /docker-entrypoint-initdb.d/55-webui.sh
-
-RUN printf '#!/bin/sh\nexec /usr/local/bin/init-km-reranker --if-configured\n' \
-    > /docker-entrypoint-initdb.d/57-km-reranker.sh \
-    && chmod 0755 /docker-entrypoint-initdb.d/57-km-reranker.sh
+RUN set -eu; \
+    for command in init-rag-agent init-webui init-km init-km-reranker; do \
+        ln -s /usr/local/libexec/init-database-roles "/usr/local/bin/$command"; \
+    done; \
+    for entry in '50-agent:init-rag-agent' '55-webui:init-webui' '56-km:init-km' '57-km-reranker:init-km-reranker --if-configured'; do \
+        file="/docker-entrypoint-initdb.d/${entry%%:*}.sh"; \
+        printf '#!/bin/sh\nexec /usr/local/bin/%s\n' "${entry#*:}" > "$file"; \
+        chmod 0755 "$file"; \
+    done
 
 EXPOSE 5432
 

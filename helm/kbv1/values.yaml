@@ -1,344 +1,491 @@
 # Nom de domaine de base pour l'environnement (ex: kb.local ou 127.0.0.1.nip.io)
 domain_name: "kb.local"
 
-# ------------------------------------------------------------------------------
-# IDENTIFIANTS HTTP BASIC AUTH (PDFPARSE, FILESERVER, KM-FRONTEND)
-# ------------------------------------------------------------------------------
-basicAuth:
-  # 1. Studio d'extraction PDF (FastAPI)
-  # NOTE : Le mot de passe doit obligatoirement comporter >= 16 caractères
-  pdfparse:
-    user: "studio"
-    password: "dev-studio-password"
-
-  # 2. Explorateur web et API du Fileserver (Nginx)
-  fileserver:
-    user: "dev"
-    password: "dev"
-
-  # 3. Console d'administration KM-Frontend (FastAPI)
-  # NOTE : En dev, laisser le mot de passe vide "" désactive le Basic Auth.
-  # Renseigner un mot de passe pour l'activer (ex: "dev-console-password").
-  kmFrontend:
-    user: "admin"
-    password: ""
-
+# Valeurs partagées entre les composants de la release.
 global:
-  environment: dev
+  # Mode d’exécution par défaut des applications et étiquette de la release.
+  environment: production
+  # Chemin du registre et du namespace, identique à REGISTRY_PATH dans GitLab.
   imageRegistry: ""
-  imageTag: ""
+  # Tag des images déployées, identique à VERSION dans GitLab.
+  imageTag: "1.0.0"
+  # Liste des Secrets Docker du namespace du déploiement.
   imagePullSecrets: []
 
 # ------------------------------------------------------------------------------
-# VOLUMES PARTAGÉS (Persistance & Montages locaux de dev)
+# VOLUMES PARTAGÉS
 # ------------------------------------------------------------------------------
+# Volumes partagés ou persistants utilisés par les composants.
 sharedStorage:
   # Corpus de documents (bind-mount ./data en compose)
   corpus:
-    type: hostPath # hostPath | pvc | emptyDir
-    hostPath: /home/dev/dev/kbv1/data
-    pvcName: ""
-    size: 5Gi
+    # Choisit un PVC, un chemin du nœud ou un volume temporaire selon le composant.
+    type: pvc # pvc | hostPath | emptyDir
+    # Chemin absolu sur le nœud lorsque le type est hostPath.
+    hostPath: ""
+    # Nom d’un PVC existant. Une chaîne vide permet au chart d’en générer le nom.
+    pvcName: kbv1-corpus
+    # Classe de stockage d’un PVC créé par le chart. Vide utilise le défaut du cluster.
+    storageClassName: ""
+    # Capacité demandée à la création du PVC. La capacité d’un PVC existant se gère séparément.
+    size: 128Gi
 
   # Poids des modèles d'embedding / OCR (bind-mount ./models en compose)
   models:
-    type: hostPath # hostPath | pvc | emptyDir
-    hostPath: /home/dev/dev/kbv1/models
-    pvcName: ""
-    size: 10Gi
+    # Choisit un PVC, un chemin du nœud ou un volume temporaire selon le composant.
+    type: pvc # pvc | hostPath | emptyDir
+    # Chemin absolu sur le nœud lorsque le type est hostPath.
+    hostPath: ""
+    # Nom d’un PVC existant. Une chaîne vide permet au chart d’en générer le nom.
+    pvcName: kbv1-models
+    # Classe de stockage d’un PVC créé par le chart. Vide utilise le défaut du cluster.
+    storageClassName: ""
+    # Capacité demandée à la création du PVC. La capacité d’un PVC existant se gère séparément.
+    size: 64Gi
 
   # Versions de documents archivées (partagé entre fileserver, indexer et km-api)
   sourceVersions:
+    # Choisit entre un PVC et un volume temporaire emptyDir.
     type: pvc # pvc | emptyDir
+    # Nom d’un PVC existant. Une chaîne vide permet au chart d’en générer le nom.
     pvcName: ""
+    # Classe de stockage d’un PVC créé par le chart. Vide utilise le défaut du cluster.
     storageClassName: ""
+    # Capacité demandée à la création du PVC. La capacité d’un PVC existant se gère séparément.
     size: 2Gi
 
   # État de l'indexeur (volume indexer-state en compose)
   indexerState:
+    # Choisit entre un PVC et un volume temporaire emptyDir.
     type: emptyDir # emptyDir | pvc
+    # Nom d’un PVC existant. Une chaîne vide permet au chart d’en générer le nom.
     pvcName: ""
+    # Capacité demandée à la création du PVC. La capacité d’un PVC existant se gère séparément.
     size: 2Gi
 
   # Assets temporaires de prévisualisation PdfParse
   pdfparseAssets:
+    # Choisit entre un PVC et un volume temporaire emptyDir.
     type: emptyDir # emptyDir | pvc
+    # Nom d’un PVC existant. Une chaîne vide permet au chart d’en générer le nom.
     pvcName: ""
+    # Capacité demandée à la création du PVC. La capacité d’un PVC existant se gère séparément.
     size: 2Gi
 
 # ------------------------------------------------------------------------------
 # 1. POSTGRESQL (Base de données pgvector & RLS)
 # ------------------------------------------------------------------------------
+# PostgreSQL, avec le schéma et les rôles SQL de la stack.
 postgres:
+  # Active le rendu de la fonctionnalité ou du composant.
   enabled: true
+  # Paramètres de l’image du composant.
   image:
-    repository: kbv1/postgres
-    tag: local
+    # Nom de l’image dans le registre, avec le préfixe km-.
+    repository: km-postgres
+    # IfNotPresent réutilise l’image si elle est déjà présente sur le nœud.
     pullPolicy: IfNotPresent
+  # Paramètres du Service interne du composant.
   service:
-    type: ClusterIP
+    # Port exposé par le Service ClusterIP.
     port: 5432
-    nodePort: 30543
+  # Paramètres applicatifs injectés sous forme de variables d’environnement.
   env:
+    # Nom de la base PostgreSQL créée ou utilisée par la stack.
     db: knowledgebase
+    # Compte utilisé pour initialiser et vérifier PostgreSQL.
     user: postgres
+  # Choix de volume pour les données PostgreSQL.
   persistence:
+    # Choisit un PVC, un chemin du nœud ou un volume temporaire selon le composant.
     type: pvc # pvc | emptyDir | hostPath
+    # Classe de stockage d’un PVC créé par le chart. Vide utilise le défaut du cluster.
     storageClassName: ""
+    # Capacité demandée à la création du PVC. La capacité d’un PVC existant se gère séparément.
     size: 10Gi
+    # Nom d’un PVC existant. Une chaîne vide permet au chart d’en générer le nom.
     pvcName: ""
+  # Ressources du conteneur principal.
   resources:
+    # Plafonds d’utilisation imposés au conteneur.
     limits:
+      # Quantité de CPU en vCPU ou en millicœurs avec le suffixe m.
       cpu: 1000m
+      # Quantité de mémoire vive.
       memory: 2Gi
+    # Ressources prises en compte pour le placement du pod.
     requests:
+      # Quantité de CPU en vCPU ou en millicœurs avec le suffixe m.
       cpu: 250m
+      # Quantité de mémoire vive.
       memory: 512Mi
 
 # ------------------------------------------------------------------------------
 # 2. FILESERVER (Serveur de fichiers statiques & corpus Nginx sécurisé)
 # ------------------------------------------------------------------------------
+# Fileserver, pour la lecture des PDF et l’exploration du corpus.
 fileserver:
+  # Active le rendu de la fonctionnalité ou du composant.
   enabled: true
+  # Paramètres de l’image du composant.
   image:
-    repository: kbv1/fileserver
-    tag: local
+    # Nom de l’image dans le registre, avec le préfixe km-.
+    repository: km-fileserver
+    # IfNotPresent réutilise l’image si elle est déjà présente sur le nœud.
     pullPolicy: IfNotPresent
+  # Paramètres du Service interne du composant.
   service:
-    type: ClusterIP
+    # Port exposé par le Service ClusterIP.
     port: 8080
-    healthPort: 8081
-    nodePort: 30880
+  # Paramètres applicatifs injectés sous forme de variables d’environnement.
   env:
-    allowedHosts: "*"
+    # Liste des hôtes acceptés. Vide utilise les noms calculés par le chart.
+    allowedHosts: ""
+    # Chemin où le Fileserver cherche les anciennes versions archivées.
     legacyVersionsRoot: "/srv/source-versions"
-    webuiPublicOrigin: "" # Si vide, déduit automatiquement: http://<subdomains.webui>.<domain_name>
+    # Origine HTTPS de WebUI autorisée à interroger le Fileserver.
+    webuiPublicOrigin: "" # Si vide, déduit automatiquement: https://<subdomains.webui>.<domain_name>
+    # Identifiant Basic Auth de l’explorateur Fileserver.
     devUser: "dev"
+  # Ressources du conteneur principal.
   resources:
+    # Plafonds d’utilisation imposés au conteneur.
     limits:
+      # Quantité de CPU en vCPU ou en millicœurs avec le suffixe m.
       cpu: 500m
+      # Quantité de mémoire vive.
       memory: 256Mi
+    # Ressources prises en compte pour le placement du pod.
     requests:
+      # Quantité de CPU en vCPU ou en millicœurs avec le suffixe m.
       cpu: 50m
+      # Quantité de mémoire vive.
       memory: 64Mi
 
 # ------------------------------------------------------------------------------
 # 3. PDFPARSE (Studio & Moteur d'extraction PDF)
 # ------------------------------------------------------------------------------
+# PdfParse Studio et le moteur de traitement PDF.
 pdfparse:
+  # Active le rendu de la fonctionnalité ou du composant.
   enabled: true
+  # Paramètres de l’image du composant.
   image:
-    repository: kbv1/pdfparse
-    tag: local
+    # Nom de l’image dans le registre, avec le préfixe km-.
+    repository: km-pdfparse
+    # IfNotPresent réutilise l’image si elle est déjà présente sur le nœud.
     pullPolicy: IfNotPresent
+  # Paramètres du Service interne du composant.
   service:
-    type: ClusterIP
+    # Port exposé par le Service ClusterIP.
     port: 8000
-    nodePort: 30080
+  # Paramètres applicatifs injectés sous forme de variables d’environnement.
   env:
-    allowedHosts: "*"
+    # Liste des hôtes acceptés. Vide utilise les noms calculés par le chart.
+    allowedHosts: ""
+    # Chemin du montage des modèles dans le conteneur.
     modelsDir: "/models"
+    # Identifiant Basic Auth de PdfParse Studio.
     adminUser: "studio"
+    # Chemin du corpus dans le conteneur.
     dataDir: "/data"
+  # Réservation du GPU NVIDIA de PdfParse.
   gpu:
-    enabled: false
-    count: 1
+    # Réserve un GPU NVIDIA pour PdfParse quand la valeur est vraie.
+    enabled: true
+  # Ressources du conteneur principal.
   resources:
+    # Plafonds d’utilisation imposés au conteneur.
     limits:
-      cpu: 2000m
-      memory: 4Gi
+      # Quantité de CPU en vCPU ou en millicœurs avec le suffixe m.
+      cpu: "8"
+      # Quantité de mémoire vive.
+      memory: 24Gi
+    # Ressources prises en compte pour le placement du pod.
     requests:
-      cpu: 500m
-      memory: 1Gi
+      # Quantité de CPU en vCPU ou en millicœurs avec le suffixe m.
+      cpu: "8"
+      # Quantité de mémoire vive.
+      memory: 16Gi
 
 # ------------------------------------------------------------------------------
 # 4. ENCODER (Service d'embeddings multilingual-e5-large)
 # ------------------------------------------------------------------------------
+# Encodeur CPU multilingual-e5-large.
 encoder:
+  # Active le rendu de la fonctionnalité ou du composant.
   enabled: true
+  # Paramètres de l’image du composant.
   image:
-    repository: kbv1/encoder
-    tag: local
+    # Nom de l’image dans le registre, avec le préfixe km-.
+    repository: km-encoder
+    # IfNotPresent réutilise l’image si elle est déjà présente sur le nœud.
     pullPolicy: IfNotPresent
+  # Paramètres du Service interne du composant.
   service:
-    type: ClusterIP
+    # Port exposé par le Service ClusterIP.
     port: 8001
-    nodePort: 30801
+  # Paramètres applicatifs injectés sous forme de variables d’environnement.
   env:
+    # Chemin du montage des modèles dans le conteneur.
     modelsDir: "/models"
-    e5Device: "cpu" # cpu | cuda
+  # Ressources du conteneur principal.
   resources:
+    # Plafonds d’utilisation imposés au conteneur.
     limits:
-      cpu: 2000m
-      memory: 4Gi
+      # Quantité de CPU en vCPU ou en millicœurs avec le suffixe m.
+      cpu: "12"
+      # Quantité de mémoire vive.
+      memory: 12Gi
+    # Ressources prises en compte pour le placement du pod.
     requests:
-      cpu: 500m
-      memory: 1Gi
+      # Quantité de CPU en vCPU ou en millicœurs avec le suffixe m.
+      cpu: "12"
+      # Quantité de mémoire vive.
+      memory: 8Gi
 
 # ------------------------------------------------------------------------------
 # 5. INDEXER (Service d'indexation vectorielle et synchronisation corpus)
 # ------------------------------------------------------------------------------
+# Indexeur chargé de synchroniser et vectoriser le corpus.
 indexer:
+  # Active le rendu de la fonctionnalité ou du composant.
   enabled: true
+  # Paramètres de l’image du composant.
   image:
-    repository: kbv1/indexer
-    tag: local
+    # Nom de l’image dans le registre, avec le préfixe km-.
+    repository: km-indexer
+    # IfNotPresent réutilise l’image si elle est déjà présente sur le nœud.
     pullPolicy: IfNotPresent
+  # Paramètres du Service interne du composant.
   service:
-    type: ClusterIP
+    # Port exposé par le Service ClusterIP.
     port: 8011
-    nodePort: 30811
+  # Paramètres applicatifs injectés sous forme de variables d’environnement.
   env:
+    # Chemin du corpus dans le conteneur.
     dataDir: "/data"
+    # Racine de référence des chemins de documents reçus en entrée.
     upstreamRoot: "/data"
+    # Emplacement des versions de documents archivées.
     sourceVersionsDir: "/source-versions"
+    # Répertoire de l’état local de l’indexeur.
     stateDir: "/state"
+    # Active l’utilisation du schéma PostgreSQL KM lorsque la valeur est 1.
     kmSchema: "1"
+  # Ressources du conteneur principal.
   resources:
+    # Plafonds d’utilisation imposés au conteneur.
     limits:
+      # Quantité de CPU en vCPU ou en millicœurs avec le suffixe m.
       cpu: 1000m
+      # Quantité de mémoire vive.
       memory: 2Gi
+    # Ressources prises en compte pour le placement du pod.
     requests:
+      # Quantité de CPU en vCPU ou en millicœurs avec le suffixe m.
       cpu: 200m
+      # Quantité de mémoire vive.
       memory: 512Mi
 
 # ------------------------------------------------------------------------------
 # 6. KM-API (Moteur de recherche RAG, BM25 & API interne)
 # ------------------------------------------------------------------------------
+# API interne de recherche et de consultation des documents.
 kmApi:
+  # Active le rendu de la fonctionnalité ou du composant.
   enabled: true
+  # Paramètres de l’image du composant.
   image:
-    repository: kbv1/km-api
-    tag: local
+    # Nom de l’image dans le registre, avec le préfixe km-.
+    repository: km-api
+    # IfNotPresent réutilise l’image si elle est déjà présente sur le nœud.
     pullPolicy: IfNotPresent
+  # Paramètres du Service interne du composant.
   service:
-    type: ClusterIP
+    # Port exposé par le Service ClusterIP.
     port: 8000
-    nodePort: 30800
+  # Paramètres applicatifs injectés sous forme de variables d’environnement.
   env:
+    # Active l’utilisation du schéma PostgreSQL KM lorsque la valeur est 1.
     kmSchema: "1"
+    # Racine du corpus utilisé par KM API.
     corpusRoot: "/data"
+    # Racine de référence des chemins de documents reçus en entrée.
     upstreamRoot: "/data"
+    # Emplacement des versions de documents archivées.
     sourceVersionsDir: "/source-versions"
-    fileserverDevUser: "dev"
+  # Ressources du conteneur principal.
   resources:
+    # Plafonds d’utilisation imposés au conteneur.
     limits:
+      # Quantité de CPU en vCPU ou en millicœurs avec le suffixe m.
       cpu: 1000m
+      # Quantité de mémoire vive.
       memory: 1Gi
+    # Ressources prises en compte pour le placement du pod.
     requests:
+      # Quantité de CPU en vCPU ou en millicœurs avec le suffixe m.
       cpu: 200m
+      # Quantité de mémoire vive.
       memory: 256Mi
 
 # ------------------------------------------------------------------------------
 # 7. KM-FRONTEND (Console d'administration RAG & Visualisation)
 # ------------------------------------------------------------------------------
+# Console d’administration KM.
 kmFrontend:
+  # Active le rendu de la fonctionnalité ou du composant.
   enabled: true
+  # Paramètres de l’image du composant.
   image:
-    repository: kbv1/km-frontend
-    tag: local
+    # Nom de l’image dans le registre, avec le préfixe km-.
+    repository: km-frontend
+    # IfNotPresent réutilise l’image si elle est déjà présente sur le nœud.
     pullPolicy: IfNotPresent
+  # Paramètres du Service interne du composant.
   service:
-    type: ClusterIP
+    # Port exposé par le Service ClusterIP.
     port: 8088
-    nodePort: 30088
+  # Paramètres applicatifs injectés sous forme de variables d’environnement.
   env:
+    # Identifiant Basic Auth de la console KM.
     consoleUser: "admin"
-    fileserverDevUser: "dev"
+    # Port utilisé par la redirection historique de KM Frontend vers PdfParse.
     pdfparsePort: "8000"
-    agentUrl: "http://km-agent:8086"
+    # URL du service d’ingestion facultatif utilisé par KM Frontend.
+    ingestionUrl: ""
+    # URL d’un service Agent externe. Vide laisse cette intégration désactivée.
+    agentUrl: ""
+  # Ressources du conteneur principal.
   resources:
+    # Plafonds d’utilisation imposés au conteneur.
     limits:
+      # Quantité de CPU en vCPU ou en millicœurs avec le suffixe m.
       cpu: 500m
+      # Quantité de mémoire vive.
       memory: 512Mi
+    # Ressources prises en compte pour le placement du pod.
     requests:
+      # Quantité de CPU en vCPU ou en millicœurs avec le suffixe m.
       cpu: 100m
+      # Quantité de mémoire vive.
       memory: 128Mi
 
 # ------------------------------------------------------------------------------
 # 8. WEBUI (Application utilisateur Chat RAG conversationnel)
 # ------------------------------------------------------------------------------
+# Interface utilisateur de recherche et de chat.
 webui:
+  # Active le rendu de la fonctionnalité ou du composant.
   enabled: true
+  # Paramètres de l’image du composant.
   image:
-    repository: kbv1/webui
-    tag: local
+    # Nom de l’image dans le registre, avec le préfixe km-.
+    repository: km-webui
+    # IfNotPresent réutilise l’image si elle est déjà présente sur le nœud.
     pullPolicy: IfNotPresent
+  # Paramètres du Service interne du composant.
   service:
-    type: ClusterIP
+    # Port exposé par le Service ClusterIP.
     port: 3000
-    targetPort: 4173
-    nodePort: 30000
+  # Paramètres applicatifs injectés sous forme de variables d’environnement.
   env:
+    # Mode d’exécution Node.js de WebUI.
     nodeEnv: "production"
+    # Durée maximale configurée pour le traitement du chat, en secondes.
     chatSeconds: "180"
+    # Mode de recherche WebUI, lexical, sémantique ou hybride.
     searchMode: "hybrid"
+    # Choisit entre le compte administrateur local et un fournisseur OIDC.
     authMode: admin # admin | oidc
-    authUrl: "" # Si vide, déduit automatiquement: http://<subdomains.webui>.<domain_name>
-    fileserverPublicUrl: "" # Si vide, déduit automatiquement: http://<subdomains.fileserver>.<domain_name>
+    # URL publique HTTPS utilisée pour la connexion et les redirections WebUI.
+    authUrl: "" # Si vide, déduit automatiquement: https://<subdomains.webui>.<domain_name>
+    # URL publique du Fileserver utilisée par le navigateur pour lire les PDF.
+    fileserverPublicUrl: "" # Si vide, déduit automatiquement: https://<subdomains.fileserver>.<domain_name>
+    # Autorise le mécanisme d’authentification à faire confiance à l’hôte de la requête.
     authTrustHost: "true"
+    # Indique à WebUI qu’elle est derrière le proxy du cluster.
     trustProxy: "true"
-    agentUrl: "http://km-agent:8086"
-    rerankerUrl: "http://reranker:8002"
+    # URL d’un service Agent externe. Vide laisse cette intégration désactivée.
+    agentUrl: ""
+    # URL du service optionnel de reclassement des résultats de recherche.
+    rerankerUrl: ""
+  # Ressources du conteneur principal.
   resources:
+    # Plafonds d’utilisation imposés au conteneur.
     limits:
+      # Quantité de CPU en vCPU ou en millicœurs avec le suffixe m.
       cpu: 1000m
+      # Quantité de mémoire vive.
       memory: 1Gi
+    # Ressources prises en compte pour le placement du pod.
     requests:
+      # Quantité de CPU en vCPU ou en millicœurs avec le suffixe m.
       cpu: 200m
+      # Quantité de mémoire vive.
       memory: 256Mi
 
 # ------------------------------------------------------------------------------
-# SECRETS (Valeurs de développement par défaut pour chaque composant)
-# ------------------------------------------------------------------------------
+# Secrets Kubernetes existants dans le namespace de la release.
 secrets:
-  create: false
-  existingSecret: "kbv1-runtime"
-  # Mots de passe PostgreSQL
-  postgresPassword: "dev-postgres-password"
-  postgresAgentPassword: "dev-agent-password-replace-in-prod"
-  postgresKmReaderPassword: "dev-km-reader-password"
-  postgresKmWriterPassword: "dev-km-writer-password"
-  postgresWebuiPassword: "dev-webui-password"
-  # Fileserver
-  fileserverJwtSecret: "dev-fileserver-jwt-secret-very-secure-32chars"
-  fileserverUiSecret: "dev-fileserver-ui-secret-key-32chars"
-  fileserverDevPassword: "dev"
-  # PdfParse Studio
-  pdfparseAdminPassword: "dev-studio-password"
-  # WebUI
-  webuiAuthSecret: "dev-webui-auth-secret-minimum-32-characters"
-  # KM Tokens
-  kmIndexerToken: "dev-km-indexer-token"
-  kmApiToken: "dev-km-api-token"
-  kmAgentToken: "dev-km-agent-token"
-  kmConsolePassword: "" # Laisser vide en dev pour désactiver le Basic Auth sur KM-Frontend
+  # Nom du Secret runtime qui fournit les mots de passe et les jetons.
+  existingSecret: kbv1-runtime
 
-# ------------------------------------------------------------------------------
-# INGRESS (Routage par sous-domaines configurables pour les 3 frontends)
-# ------------------------------------------------------------------------------
+# Publication HTTPS et configuration des noms publics.
 ingress:
+  # Active le rendu de la fonctionnalité ou du composant.
   enabled: true
-  className: "nginx"
+  # Classe du contrôleur Ingress chargé de servir les routes.
+  className: nginx
+  # Nom du Secret TLS dont le certificat couvre les hôtes exposés.
+  tlsSecretName: kbv1-tls
+  # Réglages du proxy Ingress appliqués aux routes publiques.
   annotations:
+    # Taille maximale du corps d’une requête HTTP.
     nginx.ingress.kubernetes.io/proxy-body-size: "100m"
+    # Délai maximal entre lectures depuis le backend, en secondes.
     nginx.ingress.kubernetes.io/proxy-read-timeout: "600"
+    # Délai maximal entre écritures vers le backend, en secondes.
     nginx.ingress.kubernetes.io/proxy-send-timeout: "600"
-
-  # Noms des sous-domaines configurables pour chaque frontend :
-  # Le host final est généré via : <subdomain>.<domain_name>
-  # Ex : webui.kb.local, km.kb.local, studio.kb.local
+  # Préfixes des noms publics, ajoutés devant domain_name.
   subdomains:
-    webui: "webui"
-    kmFrontend: "km"
-    pdfparseStudio: "studio"
-    fileserver: "fileserver"
-
-  paths:
-    webui: /
-    kmFrontend: /
-    pdfparseStudio: /
-    fileserver: /
-
+    # Sous-domaine public de WebUI.
+    webui: webui
+    # Sous-domaine public de KM Frontend.
+    kmFrontend: km
+    # Sous-domaine public du Studio PdfParse.
+    pdfparseStudio: studio
+    # Sous-domaine public du Fileserver.
+    fileserver: fileserver
+  # Publie la route de lecture des fichiers et, si activé, l’explorateur.
   fileserverExposed: true
-  tls: []
+  # Publication et authentification HTTP de l’explorateur Fileserver.
+  fileserverUi:
+    # Active le rendu de la fonctionnalité ou du composant.
+    enabled: true
+    # Nom du Secret Basic Auth qui contient la clé htpasswd auth.
+    authSecretName: kbv1-fileserver-basic-auth
+
+# Sélecteurs et exceptions des politiques réseau.
+networkPolicy:
+  # Identité des pods du contrôleur habilités à joindre les interfaces.
+  ingressController:
+    # Namespace dans lequel chercher les pods qui correspondent aux labels.
+    namespace: ingress-nginx
+    # Étiquettes qui doivent correspondre au pod réseau autorisé.
+    podLabels:
+      # Identifie l’application du contrôleur Ingress.
+      app.kubernetes.io/name: ingress-nginx
+      # Sélectionne le composant contrôleur de l’Ingress.
+      app.kubernetes.io/component: controller
+  # Identité des pods qui résolvent les noms DNS du cluster.
+  dns:
+    # Namespace dans lequel chercher les pods qui correspondent aux labels.
+    namespace: kube-system
+    # Étiquettes qui doivent correspondre au pod réseau autorisé.
+    podLabels:
+      # Identifie les pods du DNS du cluster.
+      k8s-app: kube-dns
+  # Règles NetworkPolicy egress supplémentaires par composant, par exemple webui.
+  extraEgress: {}

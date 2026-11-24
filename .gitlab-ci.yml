@@ -1,113 +1,169 @@
-stages: [lint, build, package, publish, deploy-dev]
-
-workflow:
-  rules:
-    - if: '$CI_PIPELINE_SOURCE == "merge_request_event"'
-    - if: '$CI_COMMIT_TAG'
-    - if: '$CI_COMMIT_BRANCH && $CI_OPEN_MERGE_REQUESTS && $CI_PIPELINE_SOURCE == "push"'
-      when: never
-    - if: '$CI_COMMIT_BRANCH'
+stages: [package, deploy]
 
 variables:
-  HELM_CHART_DIR: helm/kbv1
-  HELM_IMAGE: alpine/helm:3.14.3
-  KUBE_NAMESPACE: kbv1
-  WEBUI_DEV_URL: http://webui.kb.local
+  REGISTRY_PATH: "$CI_REGISTRY_IMAGE"
+  VERSION: "1.0.0"
+  BUILDAH_IMAGE: "${GITEA_BASE_REGISTRY}/ci-buildah:latest"
+  HELM_IMAGE: "${GITEA_BASE_REGISTRY}/ci-helm:latest"
+  KUBE_NAMESPACE: "kbv1"
 
-default:
-  image:
-    name: $HELM_IMAGE
-    entrypoint: [""]
-
-.release:
-  rules:
-    - if: '$CI_COMMIT_TAG'
-    - if: '$CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH'
-
-helm:lint:
-  stage: lint
-  script:
-    - helm version
-    - helm lint --strict "$HELM_CHART_DIR"
-    - helm template test-release "$HELM_CHART_DIR" >/dev/null
-    - helm template test-release "$HELM_CHART_DIR" -f "$HELM_CHART_DIR/values-nodeport.yaml" >/dev/null
-    - helm template test-release "$HELM_CHART_DIR" --set-string global.imageRegistry=registry.example/kbv1,global.imageTag=test >/dev/null
-
-images:publish:
-  extends: .release
-  stage: build
-  tags: [kbv1-docker]
-  script:
-    - sh scripts/ci-publish-images.sh
-
-helm:package:
-  extends: .release
+.package-image:
   stage: package
-  script:
+  image: "$BUILDAH_IMAGE"
+  variables:
+    STORAGE_DRIVER: vfs
+  before_script:
+    - PACKAGE_NAME="${CI_JOB_NAME#package:}"
+    - IMAGE="$REGISTRY_PATH/km-${PACKAGE_NAME#km-}:$VERSION"
+    - buildah login -u "${REGISTRY_USER:-$CI_REGISTRY_USER}" -p "${REGISTRY_PASSWORD:-$CI_REGISTRY_PASSWORD}" "${REGISTRY_PATH%%/*}"
+    - ': "${GITEA_BASE_REGISTRY:?Configurer le registre des bases Gitea dans GitLab CI/CD}"'
     - |
-      set -eu
-      if [ -n "${CI_COMMIT_TAG:-}" ]; then
-        version=${CI_COMMIT_TAG#v}
-      else
-        base=$(awk '/^version:/ {print $2}' "$HELM_CHART_DIR/Chart.yaml")
-        version="$base-ci.$CI_PIPELINE_IID"
+      if [ -n "${GITEA_USER:-}" ]; then
+        printf '%s' "${GITEA_TOKEN:?Configurer GITEA_TOKEN}" |
+          buildah login --username "$GITEA_USER" --password-stdin "${GITEA_BASE_REGISTRY%%/*}"
       fi
-      mkdir -p dist
-      staging=$(mktemp -d)
-      trap 'rm -rf "$staging"' EXIT
-      cp -R "$HELM_CHART_DIR" "$staging/chart"
-      sed -i -e 's|^  imageRegistry: ""$|  imageRegistry: "'"$CI_REGISTRY_IMAGE"'"|' \
-        -e 's|^  imageTag: ""$|  imageTag: "'"$CI_COMMIT_SHA"'"|' "$staging/chart/values.yaml"
-      helm package "$staging/chart" --version "$version" --app-version "$CI_COMMIT_SHA" --destination dist/
-      printf 'global:\n  imageRegistry: "%s"\n  imageTag: "%s"\n' "$CI_REGISTRY_IMAGE" "$CI_COMMIT_SHA" > dist/values-images.yaml
-      helm template test-release dist/*.tgz >/dev/null
-  artifacts:
-    paths: [dist/*.tgz, dist/values-images.yaml]
-    expire_in: 1 week
-
-helm:publish:package-registry:
-  extends: .release
-  stage: publish
-  needs: [helm:package]
+    - 'pull_base() { buildah pull "$GITEA_BASE_REGISTRY/$1:latest" && buildah tag "$GITEA_BASE_REGISTRY/$1:latest" "knowledgebase/$1:local"; }'
   script:
-    - |
-      set -eu
-      set -- dist/*.tgz
-      curl --fail --show-error --request POST \
-        --user "gitlab-ci-token:$CI_JOB_TOKEN" --form "chart=@$1" \
-        "$CI_API_V4_URL/projects/$CI_PROJECT_ID/packages/helm/api/stable/charts"
+    - &build-image |
+      set --
+      network=none
+      if [ -n "${WORKSPACE_CONTEXT:-}" ]; then
+        : "${PIP_INDEX_URL:?Définir PIP_INDEX_URL dans les variables CI/CD GitLab}"
+        pull_base wheelhouse-preparer
+        network=host
+        set -- --build-context "workspace=$WORKSPACE_CONTEXT" \
+          --secret id=pip_index_url,src=PIP_INDEX_URL,type=env \
+          --build-arg WHEEL_SOURCE=gitea
+        if [ -n "${PIP_CERT:-}" ]; then
+          set -- "$@" --secret "id=pip_cert,src=$PIP_CERT"
+        fi
+        if [ "$PACKAGE_NAME" = pdfparse ]; then
+          set -- "$@" --build-arg "PDFPARSE_WHEEL_PROFILE=${PDFPARSE_WHEEL_PROFILE:-pdfparse}"
+        else
+          pull_base base-python
+        fi
+      fi
+      buildah bud "$@" --format=docker --pull=never --network="$network" \
+        -f "$DOCKERFILE" -t "$IMAGE" "$BUILD_CONTEXT"
+    - &push-image buildah push "$IMAGE"
+    - &push-latest buildah push "$IMAGE" "docker://${IMAGE%:*}:latest"
 
-helm:publish:oci:
-  extends: .release
-  stage: publish
-  needs: [helm:package]
+package:postgres:
+  extends: .package-image
+  variables:
+    DOCKERFILE: packages/database/Dockerfile
+    BUILD_CONTEXT: packages/database
   script:
-    - |
-      set -eu
-      printf '%s\n' "$CI_REGISTRY_PASSWORD" | helm registry login --username "$CI_REGISTRY_USER" --password-stdin "$CI_REGISTRY"
-      set -- dist/*.tgz
-      helm push "$1" "oci://$CI_REGISTRY_IMAGE/charts"
+    - pull_base base-pg-textsearch
+    - pull_base base-pgvectorscale
+    - pull_base base-pgvector
+    - pull_base base-postgres
+    - *build-image
+    - *push-image
+    - *push-latest
 
-deploy:dev:
-  stage: deploy-dev
-  needs: [helm:package, helm:publish:package-registry, helm:publish:oci]
-  resource_group: kbv1-dev
+
+package:encoder:
+  extends: .package-image
+  resource_group: kbv1-gpu-build
+  variables:
+    DOCKERFILE: packages/embeddings/Dockerfile
+    BUILD_CONTEXT: packages/embeddings
+    WORKSPACE_CONTEXT: "."
+  script:
+    - *build-image
+    - *push-image
+    - *push-latest
+
+package:indexer:
+  extends: .package-image
+  variables:
+    DOCKERFILE: packages/embeddings/indexer/Dockerfile
+    BUILD_CONTEXT: packages/embeddings/indexer
+    WORKSPACE_CONTEXT: "."
+  script:
+    - *build-image
+    - *push-image
+    - *push-latest
+
+package:fileserver:
+  extends: .package-image
+  variables:
+    DOCKERFILE: packages/fileserver/Dockerfile
+    BUILD_CONTEXT: packages/fileserver
+  script:
+    - pull_base base-fileserver
+    - pull_base build-fileserver
+    - *build-image
+    - *push-image
+    - *push-latest
+
+package:km-api:
+  extends: .package-image
+  variables:
+    DOCKERFILE: packages/km-api/Dockerfile
+    BUILD_CONTEXT: packages/km-api
+    WORKSPACE_CONTEXT: "."
+  script:
+    - *build-image
+    - *push-image
+    - *push-latest
+
+package:km-frontend:
+  extends: .package-image
+  variables:
+    DOCKERFILE: packages/km-frontend/Dockerfile
+    BUILD_CONTEXT: packages/km-frontend
+    WORKSPACE_CONTEXT: "."
+  script:
+    - pull_base build-km-frontend
+    - *build-image
+    - *push-image
+    - *push-latest
+
+package:pdfparse:
+  extends: .package-image
+  resource_group: kbv1-gpu-build
+  variables:
+    DOCKERFILE: packages/pdfparse/Dockerfile
+    BUILD_CONTEXT: packages/pdfparse
+    WORKSPACE_CONTEXT: "."
+  script:
+    - pull_base build-frontend
+    - pull_base base-python-pdf
+    - *build-image
+    - *push-image
+    - *push-latest
+
+package:webui:
+  extends: .package-image
+  variables:
+    DOCKERFILE: packages/webui/Dockerfile
+    BUILD_CONTEXT: packages/webui
+  script:
+    - pull_base build-webui
+    - pull_base base-webui
+    - *build-image
+    - *push-image
+    - *push-latest
+
+deploy:preprod:
+  stage: deploy
+  image:
+    name: "$HELM_IMAGE"
+    entrypoint: [""]
+  resource_group: kbv1-preprod
   environment:
-    name: dev
-    url: $WEBUI_DEV_URL
-  script:
-    - |
-      set -eu
-      : "${KUBE_DEV_CONTEXT:?Configurer le contexte Kubernetes dev}"
-      : "${KUBE_DEV_VALUES:?Configurer une variable GitLab de type fichier pour les valeurs du site}"
-      test -r "$KUBE_DEV_VALUES"
-      set -- dist/*.tgz
-      helm upgrade --install kbv1 "$1" \
-        --kube-context "$KUBE_DEV_CONTEXT" --namespace "$KUBE_NAMESPACE" \
-        -f "$KUBE_DEV_VALUES" -f dist/values-images.yaml \
-        --set secrets.create=false --set global.requireExternalSecret=true \
-        --atomic --wait --timeout 12m
+    name: preprod
   rules:
     - if: '$CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH'
       when: manual
       allow_failure: false
+  script:
+    - 'KUBE_PREPROD_CONTEXT="${KUBE_PREPROD_CONTEXT:-${KUBE_DEV_CONTEXT:-}}"'
+    - ': "${KUBE_PREPROD_CONTEXT:?Configurer le contexte Kubernetes de préproduction}"'
+    - 'KUBE_PREPROD_VALUES="${KUBE_PREPROD_VALUES:-${KUBE_DEV_VALUES:-}}"'
+    - ': "${KUBE_PREPROD_VALUES:?Configurer le fichier de valeurs de préproduction}"'
+    - test -r "$KUBE_PREPROD_VALUES"
+    - helm lint --strict helm/kbv1 -f "$KUBE_PREPROD_VALUES" --set-string "global.imageRegistry=$REGISTRY_PATH" --set-string "global.imageTag=$VERSION"
+    - helm upgrade --install kbv1 helm/kbv1 --kube-context "$KUBE_PREPROD_CONTEXT" --namespace "$KUBE_NAMESPACE" -f "$KUBE_PREPROD_VALUES" --set-string "global.imageRegistry=$REGISTRY_PATH" --set-string "global.imageTag=$VERSION" --wait --timeout 12m

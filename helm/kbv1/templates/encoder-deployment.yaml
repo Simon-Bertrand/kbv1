@@ -1,70 +1,157 @@
+{{- /* Rend cette ressource uniquement si la fonctionnalité est activée. */ -}}
 {{- if .Values.encoder.enabled }}
+# Version de l’API utilisée pour cette ressource.
 apiVersion: apps/v1
+# Type de ressource que Kubernetes doit créer.
 kind: Deployment
+# Identité et étiquettes de la ressource.
 metadata:
+  # Nom de la ressource dans le namespace de la release.
   name: {{ include "kbv1.fullname" . }}-encoder
+  # Étiquettes Helm et identité de la release.
   labels:
     {{- include "kbv1.labels" . | nindent 4 }}
+    # Étiquette qui distingue ce composant des autres pods de la release.
     app.kubernetes.io/component: encoder
+# Configuration souhaitée pour cette ressource.
 spec:
+  # Nombre de pods maintenus par le Deployment.
   replicas: 1
+  # Étiquettes des pods que cette ressource sélectionne.
   selector:
+    # Toutes ces étiquettes doivent correspondre au pod ciblé.
     matchLabels:
       {{- include "kbv1.selectorLabels" . | nindent 6 }}
+      # Étiquette qui distingue ce composant des autres pods de la release.
       app.kubernetes.io/component: encoder
+  # Modèle de pod appliqué à chaque réplique.
   template:
+    # Identité et étiquettes de la ressource.
     metadata:
+      # Étiquettes Helm et identité de la release.
       labels:
         {{- include "kbv1.selectorLabels" . | nindent 8 }}
+        # Étiquette qui distingue ce composant des autres pods de la release.
         app.kubernetes.io/component: encoder
+    # Configuration souhaitée pour cette ressource.
     spec:
+      # Empêche le montage automatique d’un jeton d’accès à l’API Kubernetes.
+      automountServiceAccountToken: false
+      {{- /* Ajoute les Secrets de lecture du registre uniquement lorsqu’ils sont fournis. */ -}}
       {{- with .Values.global.imagePullSecrets }}
+      # Secrets Docker utilisés par le kubelet pour accéder au registre privé.
       imagePullSecrets:
         {{- toYaml . | nindent 8 }}
       {{- end }}
+      # Conteneurs applicatifs du pod.
       containers:
+        # Nom du conteneur dans le pod.
         - name: encoder
+          # Référence de l’image publiée par GitLab, avec le registre et le tag de la release.
           image: {{ include "kbv1.image" (dict "root" . "image" .Values.encoder.image) | quote }}
+          # Détermine quand le kubelet télécharge de nouveau l’image.
           imagePullPolicy: {{ .Values.encoder.image.pullPolicy }}
+          # Ports utilisés par cette ressource.
           ports:
+            # Nom du port de conteneur, réutilisable par les sondes et le Service.
             - name: http
+              # Port d’écoute déclaré par le conteneur.
               containerPort: 8001
+              # Protocole de transport du port.
               protocol: TCP
+          # Variables injectées dans le conteneur au démarrage.
           env:
+            # Mode d’exécution applicatif. Le Fileserver et la console KM utilisent dev lorsque l’explorateur est publié.
+            - name: KB_ENV
+              value: {{ .Values.global.environment | quote }}
+            # Injecte KM_ENCODER_TOKEN depuis le Secret runtime.
+            - name: KM_ENCODER_TOKEN
+              # Source de cette variable, résolue par Kubernetes.
+              valueFrom:
+                # Lit la valeur dans un Secret du namespace.
+                secretKeyRef:
+                  # Nom du Secret runtime partagé par les composants.
+                  name: {{ include "kbv1.secretName" . }}
+                  # Clé du Secret injectée dans cette variable.
+                  key: KM_ENCODER_TOKEN
+            # Répertoire des modèles monté dans le conteneur.
             - name: MODELS_DIR
               value: {{ .Values.encoder.env.modelsDir | quote }}
+            # Exécute l’inférence E5 sur CPU.
             - name: E5_DEVICE
-              value: {{ .Values.encoder.env.e5Device | quote }}
+              value: "cpu"
+            {{- /* Applique le même réglage CPU aux bibliothèques OpenMP et MKL. */ -}}
+            {{- range $variable := list "OMP_NUM_THREADS" "MKL_NUM_THREADS" }}
+            # Aligne les threads OpenMP et MKL sur la limite CPU du conteneur.
+            - name: {{ $variable }}
+              # Source de cette variable, résolue par Kubernetes.
+              valueFrom:
+                # Dérive la valeur des ressources du conteneur.
+                resourceFieldRef:
+                  # Ressource de référence pour le nombre de threads.
+                  resource: limits.cpu
+                  # Exprime la quantité CPU en vCPU entiers.
+                  divisor: "1"
+            {{- end }}
+          # Redémarre le conteneur après des échecs répétés.
           livenessProbe:
+            # Vérifie la réponse HTTP de l’application.
             httpGet:
+              # Endpoint de santé contrôlé par la sonde HTTP.
               path: /health
+              # Port du conteneur interrogé par la sonde.
               port: 8001
+            # Délai avant le début des vérifications, en secondes.
             initialDelaySeconds: 30
+            # Intervalle entre deux vérifications, en secondes.
             periodSeconds: 15
+            # Délai maximal d’une vérification, en secondes.
             timeoutSeconds: 5
+          # Retire le pod des endpoints du Service tant que le contrôle échoue.
           readinessProbe:
+            # Vérifie la réponse HTTP de l’application.
             httpGet:
+              # Endpoint de santé contrôlé par la sonde HTTP.
               path: /health
+              # Port du conteneur interrogé par la sonde.
               port: 8001
+            # Délai avant le début des vérifications, en secondes.
             initialDelaySeconds: 10
+            # Intervalle entre deux vérifications, en secondes.
             periodSeconds: 10
+            # Délai maximal d’une vérification, en secondes.
             timeoutSeconds: 5
+          # Points de montage visibles dans le conteneur.
           volumeMounts:
+            # Nom du volume à monter, défini dans la liste des volumes du pod.
             - name: models-storage
+              # Emplacement du volume dans le conteneur.
               mountPath: {{ .Values.encoder.env.modelsDir }}
+              # Interdit les écritures dans ce montage.
               readOnly: true
+          # Demandes et limites de ressources Kubernetes.
           resources:
             {{- toYaml .Values.encoder.resources | nindent 12 }}
+      # Sources des volumes utilisés par le pod.
       volumes:
+        # Nom du volume dans le pod.
         - name: models-storage
+          {{- /* Utilise le stockage persistant lorsque le mode PVC est sélectionné. */ -}}
           {{- if eq .Values.sharedStorage.models.type "pvc" }}
+          # Monte le volume persistant déclaré par un PVC.
           persistentVolumeClaim:
+            # Sélectionne le PVC fourni ou le nom généré par la release.
             claimName: {{ if .Values.sharedStorage.models.pvcName }}{{ .Values.sharedStorage.models.pvcName }}{{ else }}{{ include "kbv1.fullname" . }}-models{{ end }}
+          {{- /* Utilise le chemin local du nœud lorsque le mode hostPath est sélectionné. */ -}}
           {{- else if eq .Values.sharedStorage.models.type "hostPath" }}
+          # Utilise un chemin local du nœud qui héberge le pod.
           hostPath:
+            # Chemin utilisé par cette ressource.
             path: {{ .Values.sharedStorage.models.hostPath }}
+            # Exige un répertoire existant sur le nœud.
             type: Directory
           {{- else }}
+          # Crée un volume temporaire supprimé avec le pod.
           emptyDir: {}
           {{- end }}
 {{- end }}

@@ -1,13 +1,19 @@
+# Format du fichier Chart.yaml reconnu par Helm.
 apiVersion: v2
+# Nom du chart utilisé pour le packaging et l’installation.
 name: kbv1
-description: Helm Chart complet pour la stack de développement KBv1 (équivalent compose.dev.yaml)
+# Description affichée dans les outils Helm et les catalogues.
+description: Stack KBv1 avec Ingress HTTPS et politiques réseau
+# Déclare un chart d’application qui peut être installé.
 type: application
-version: 0.1.0
+# Version du paquet Helm indépendamment du tag des images.
+version: 0.2.0
+# Version de l’application affichée dans les métadonnées Helm.
 appVersion: "1.0.0"
+# Mots-clés utilisés pour indexer le chart dans un catalogue.
 keywords:
   - kbv1
   - rag
-  - dev
   - postgres
   - fileserver
   - pdfparse
@@ -16,5 +22,7 @@ keywords:
   - km-api
   - km-frontend
   - webui
+# Liste des personnes ou équipes qui maintiennent le chart.
 maintainers:
+  # Nom du chart utilisé pour le packaging et l’installation.
   - name: dev

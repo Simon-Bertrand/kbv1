@@ -9,13 +9,18 @@ esac
 
 : "${CI_REGISTRY_IMAGE:?}"
 : "${CI_COMMIT_SHA:?}"
+: "${PIP_INDEX_URL:?Set PIP_INDEX_URL to the Gitea PyPI index}"
 if [ "$publish" = yes ]; then
     : "${CI_REGISTRY:?}"
     : "${CI_REGISTRY_USER:?}"
     : "${CI_REGISTRY_PASSWORD:?}"
 fi
 
-# The shell runner owns the offline build images prepared for this workspace lock.
+build_image_prefix=${BUILD_IMAGE_PREFIX:-knowledgebase}
+build_image_prefix=${build_image_prefix%/}
+export build_image_prefix
+
+# Resolve the same image references that Docker will use in the build.
 services='postgres fileserver pdfparse encoder indexer km-api km-frontend webui'
 dockerfile() {
     case "$1" in
@@ -27,13 +32,19 @@ dockerfile() {
 }
 
 scratch=$(mktemp -d)
-trap 'rm -rf "$scratch"' EXIT
+trap 'rm -rf -- "$scratch"' EXIT
 for service in $services; do
-    awk '$1 == "FROM" && $2 ~ /^knowledgebase\// {print $2}
-         $1 == "COPY" && $2 ~ /^--from=knowledgebase\// {sub(/^--from=/, "", $2); print $2}' "$(dockerfile "$service")"
+    awk '
+        $1 == "FROM" && $2 ~ /^\$\{BUILD_IMAGE_PREFIX\}\// {
+            sub(/^\$\{BUILD_IMAGE_PREFIX\}/, ENVIRON["build_image_prefix"], $2)
+            print $2
+        }
+    ' "$(dockerfile "$service")"
 done | sort -u > "$scratch/required-images"
 while IFS= read -r image; do
-    if ! docker image inspect "$image" >/dev/null 2>&1; then
+    if [ "$build_image_prefix" != knowledgebase ]; then
+        docker pull "$image"
+    elif ! docker image inspect "$image" >/dev/null 2>&1; then
         printf 'Base de build hors ligne manquante sur le runner : %s\n' "$image" >&2
         exit 1
     fi
@@ -41,11 +52,22 @@ done < "$scratch/required-images"
 
 for service in $services; do
     file=$(dockerfile "$service")
+    context=${file%/*}
+    set --
     case "$service" in
-        postgres|fileserver|webui) context=${file%/*} ;;
-        *) context=. ;;
+        pdfparse|encoder|indexer|km-api|km-frontend)
+            set -- --build-context workspace=. --build-arg WHEEL_SOURCE=gitea \
+                --secret id=pip_index_url,env=PIP_INDEX_URL
+            if [ -n "${PIP_CERT:-}" ]; then
+                set -- "$@" --secret "id=pip_cert,src=$PIP_CERT"
+            fi
+            if [ "$service" = pdfparse ]; then
+                set -- "$@" --build-arg "PDFPARSE_WHEEL_PROFILE=${PDFPARSE_WHEEL_PROFILE:-pdfparse}"
+            fi
+            ;;
     esac
-    docker build --network=none --pull=false -f "$file" \
+    docker build "$@" --network=default --pull=false -f "$file" \
+        --build-arg "BUILD_IMAGE_PREFIX=$build_image_prefix" \
         --label "org.opencontainers.image.revision=$CI_COMMIT_SHA" \
         -t "$CI_REGISTRY_IMAGE/$service:$CI_COMMIT_SHA" "$context"
 done

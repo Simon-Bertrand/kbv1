@@ -13,7 +13,7 @@ import httpx
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import FileResponse, PlainTextResponse, Response, StreamingResponse
 from fastapi.staticfiles import StaticFiles
-from km_frontend_logging import RequestIdMiddleware, set_user, upstream_headers
+from src.logging import RequestIdMiddleware, set_user, upstream_headers
 
 ROOT = Path(__file__).parent
 DIST = Path(os.environ.get('FRONTEND_DIST_DIR') or os.environ.get('KM_FRONTEND_DIST') or (ROOT / 'dist'))

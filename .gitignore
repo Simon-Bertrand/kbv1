@@ -2,7 +2,15 @@
 /.dev/
 /.env
 /.env.dev.local
+.vscode
 data
 data_backup
 raw_data
 /source-versions/
+.codex
+.aws
+.agents
+/.wheelhouse/
+/.wheelhouse-*/
+.tarball
+.vscode

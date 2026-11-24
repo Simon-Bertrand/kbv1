@@ -1,65 +1,155 @@
-{{- if and (eq .Values.sharedStorage.sourceVersions.type "pvc") (not .Values.sharedStorage.sourceVersions.pvcName) }}
+{{- $root := . }}
+{{- /* Détermine les PVC du corpus et des modèles nécessaires aux composants activés. */ -}}
+{{- $sharedClaims := dict
+    "corpus" (or .Values.fileserver.enabled .Values.pdfparse.enabled .Values.indexer.enabled .Values.kmApi.enabled)
+    "models" (or .Values.pdfparse.enabled .Values.encoder.enabled) }}
+{{- /* Recense les composants activés pour produire leurs politiques. */ -}}
+{{- range $name, $enabled := $sharedClaims }}
+{{- /* Lit la configuration du volume partagé à traiter. */ -}}
+{{- $volume := index $root.Values.sharedStorage $name }}
+{{- /* Utilise le stockage persistant lorsque le mode PVC est sélectionné. */ -}}
+{{- if and $enabled (eq $volume.type "pvc") (not $volume.pvcName) }}
+---
+# Version de l’API utilisée pour cette ressource.
 apiVersion: v1
+# Type de ressource que Kubernetes doit créer.
 kind: PersistentVolumeClaim
+# Identité et étiquettes de la ressource.
 metadata:
-  name: {{ include "kbv1.fullname" . }}-source-versions
+  # Nom de la ressource dans le namespace de la release.
+  name: {{ include "kbv1.fullname" $root }}-{{ $name }}
+  # Étiquettes Helm et identité de la release.
   labels:
-    {{- include "kbv1.labels" . | nindent 4 }}
+    {{- include "kbv1.labels" $root | nindent 4 }}
+# Configuration souhaitée pour cette ressource.
 spec:
-  {{- with .Values.sharedStorage.sourceVersions.storageClassName }}
+  {{- /* Ajoute la StorageClass uniquement si elle est renseignée. */ -}}
+  {{- with $volume.storageClassName }}
+  # Classe de stockage, ou classe par défaut si omise.
   storageClassName: {{ . | quote }}
   {{- end }}
+  # Modes d’accès concurrents demandés pour le volume.
   accessModes:
     - ReadWriteMany
+  # Demandes et limites de ressources Kubernetes.
   resources:
+    # Capacité que Kubernetes réserve pour planifier le pod ou provisionner le volume.
     requests:
+      # Capacité demandée au provisionneur du PVC.
+      storage: {{ $volume.size }}
+{{- end }}
+{{- end }}
+{{- /* Utilise le stockage persistant lorsque le mode PVC est sélectionné. */ -}}
+{{- if and (eq .Values.sharedStorage.sourceVersions.type "pvc") (not .Values.sharedStorage.sourceVersions.pvcName) }}
+---
+# Version de l’API utilisée pour cette ressource.
+apiVersion: v1
+# Type de ressource que Kubernetes doit créer.
+kind: PersistentVolumeClaim
+# Identité et étiquettes de la ressource.
+metadata:
+  # Nom de la ressource dans le namespace de la release.
+  name: {{ include "kbv1.fullname" . }}-source-versions
+  # Étiquettes Helm et identité de la release.
+  labels:
+    {{- include "kbv1.labels" . | nindent 4 }}
+# Configuration souhaitée pour cette ressource.
+spec:
+  {{- /* Ajoute la StorageClass uniquement si elle est renseignée. */ -}}
+  {{- with .Values.sharedStorage.sourceVersions.storageClassName }}
+  # Classe de stockage, ou classe par défaut si omise.
+  storageClassName: {{ . | quote }}
+  {{- end }}
+  # Modes d’accès concurrents demandés pour le volume.
+  accessModes:
+    - ReadWriteMany
+  # Demandes et limites de ressources Kubernetes.
+  resources:
+    # Capacité que Kubernetes réserve pour planifier le pod ou provisionner le volume.
+    requests:
+      # Capacité demandée au provisionneur du PVC.
       storage: {{ .Values.sharedStorage.sourceVersions.size }}
 ---
 {{- end }}
+{{- /* Utilise le stockage persistant lorsque le mode PVC est sélectionné. */ -}}
 {{- if and (eq .Values.sharedStorage.indexerState.type "pvc") (not .Values.sharedStorage.indexerState.pvcName) }}
+# Version de l’API utilisée pour cette ressource.
 apiVersion: v1
+# Type de ressource que Kubernetes doit créer.
 kind: PersistentVolumeClaim
+# Identité et étiquettes de la ressource.
 metadata:
+  # Nom de la ressource dans le namespace de la release.
   name: {{ include "kbv1.fullname" . }}-indexer-state
+  # Étiquettes Helm et identité de la release.
   labels:
     {{- include "kbv1.labels" . | nindent 4 }}
+# Configuration souhaitée pour cette ressource.
 spec:
+  # Modes d’accès concurrents demandés pour le volume.
   accessModes:
     - ReadWriteOnce
+  # Demandes et limites de ressources Kubernetes.
   resources:
+    # Capacité que Kubernetes réserve pour planifier le pod ou provisionner le volume.
     requests:
+      # Capacité demandée au provisionneur du PVC.
       storage: {{ .Values.sharedStorage.indexerState.size }}
 ---
 {{- end }}
+{{- /* Utilise le stockage persistant lorsque le mode PVC est sélectionné. */ -}}
 {{- if and (eq .Values.sharedStorage.pdfparseAssets.type "pvc") (not .Values.sharedStorage.pdfparseAssets.pvcName) }}
+# Version de l’API utilisée pour cette ressource.
 apiVersion: v1
+# Type de ressource que Kubernetes doit créer.
 kind: PersistentVolumeClaim
+# Identité et étiquettes de la ressource.
 metadata:
+  # Nom de la ressource dans le namespace de la release.
   name: {{ include "kbv1.fullname" . }}-pdfparse-assets
+  # Étiquettes Helm et identité de la release.
   labels:
     {{- include "kbv1.labels" . | nindent 4 }}
+# Configuration souhaitée pour cette ressource.
 spec:
+  # Modes d’accès concurrents demandés pour le volume.
   accessModes:
     - ReadWriteOnce
+  # Demandes et limites de ressources Kubernetes.
   resources:
+    # Capacité que Kubernetes réserve pour planifier le pod ou provisionner le volume.
     requests:
+      # Capacité demandée au provisionneur du PVC.
       storage: {{ .Values.sharedStorage.pdfparseAssets.size }}
 ---
 {{- end }}
+{{- /* Utilise le stockage persistant lorsque le mode PVC est sélectionné. */ -}}
 {{- if and (eq .Values.postgres.persistence.type "pvc") (not .Values.postgres.persistence.pvcName) }}
+# Version de l’API utilisée pour cette ressource.
 apiVersion: v1
+# Type de ressource que Kubernetes doit créer.
 kind: PersistentVolumeClaim
+# Identité et étiquettes de la ressource.
 metadata:
+  # Nom de la ressource dans le namespace de la release.
   name: {{ include "kbv1.fullname" . }}-postgres-data
+  # Étiquettes Helm et identité de la release.
   labels:
     {{- include "kbv1.labels" . | nindent 4 }}
+# Configuration souhaitée pour cette ressource.
 spec:
+  {{- /* Ajoute la StorageClass uniquement si elle est renseignée. */ -}}
   {{- with .Values.postgres.persistence.storageClassName }}
+  # Classe de stockage, ou classe par défaut si omise.
   storageClassName: {{ . | quote }}
   {{- end }}
+  # Modes d’accès concurrents demandés pour le volume.
   accessModes:
     - ReadWriteOnce
+  # Demandes et limites de ressources Kubernetes.
   resources:
+    # Capacité que Kubernetes réserve pour planifier le pod ou provisionner le volume.
     requests:
+      # Capacité demandée au provisionneur du PVC.
       storage: {{ .Values.postgres.persistence.size }}
 {{- end }}

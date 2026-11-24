@@ -1,0 +1,17 @@
+**
+!packages/
+!packages/webui/
+!packages/webui/package.json
+!packages/webui/package-lock.json
+!packages/km-frontend/
+!packages/km-frontend/package.json
+!packages/km-frontend/package-lock.json
+!packages/pdfparse/
+!packages/pdfparse/src/
+!packages/pdfparse/src/pdfparse/
+!packages/pdfparse/src/pdfparse/front/
+!packages/pdfparse/src/pdfparse/front/package.json
+!packages/pdfparse/src/pdfparse/front/package-lock.json
+!scripts/
+!scripts/docker/
+!scripts/docker/wheelhouse.py

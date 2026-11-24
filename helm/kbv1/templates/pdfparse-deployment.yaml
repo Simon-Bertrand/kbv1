@@ -1,107 +1,196 @@
+{{- /* Rend cette ressource uniquement si la fonctionnalité est activée. */ -}}
 {{- if .Values.pdfparse.enabled }}
+# Version de l’API utilisée pour cette ressource.
 apiVersion: apps/v1
+# Type de ressource que Kubernetes doit créer.
 kind: Deployment
+# Identité et étiquettes de la ressource.
 metadata:
+  # Nom de la ressource dans le namespace de la release.
   name: {{ include "kbv1.fullname" . }}-pdfparse
+  # Étiquettes Helm et identité de la release.
   labels:
     {{- include "kbv1.labels" . | nindent 4 }}
+    # Étiquette qui distingue ce composant des autres pods de la release.
     app.kubernetes.io/component: pdfparse
+# Configuration souhaitée pour cette ressource.
 spec:
+  # Nombre de pods maintenus par le Deployment.
   replicas: 1
+  # Étiquettes des pods que cette ressource sélectionne.
   selector:
+    # Toutes ces étiquettes doivent correspondre au pod ciblé.
     matchLabels:
       {{- include "kbv1.selectorLabels" . | nindent 6 }}
+      # Étiquette qui distingue ce composant des autres pods de la release.
       app.kubernetes.io/component: pdfparse
+  # Modèle de pod appliqué à chaque réplique.
   template:
+    # Identité et étiquettes de la ressource.
     metadata:
+      # Étiquettes Helm et identité de la release.
       labels:
         {{- include "kbv1.selectorLabels" . | nindent 8 }}
+        # Étiquette qui distingue ce composant des autres pods de la release.
         app.kubernetes.io/component: pdfparse
+    # Configuration souhaitée pour cette ressource.
     spec:
+      # Empêche le montage automatique d’un jeton d’accès à l’API Kubernetes.
+      automountServiceAccountToken: false
+      {{- /* Ajoute les Secrets de lecture du registre uniquement lorsqu’ils sont fournis. */ -}}
       {{- with .Values.global.imagePullSecrets }}
+      # Secrets Docker utilisés par le kubelet pour accéder au registre privé.
       imagePullSecrets:
         {{- toYaml . | nindent 8 }}
       {{- end }}
+      # Conteneurs applicatifs du pod.
       containers:
+        # Nom du conteneur dans le pod.
         - name: pdfparse
+          # Référence de l’image publiée par GitLab, avec le registre et le tag de la release.
           image: {{ include "kbv1.image" (dict "root" . "image" .Values.pdfparse.image) | quote }}
+          # Détermine quand le kubelet télécharge de nouveau l’image.
           imagePullPolicy: {{ .Values.pdfparse.image.pullPolicy }}
+          # Ports utilisés par cette ressource.
           ports:
+            # Nom du port de conteneur, réutilisable par les sondes et le Service.
             - name: http
+              # Port d’écoute déclaré par le conteneur.
               containerPort: 8000
+              # Protocole de transport du port.
               protocol: TCP
+          # Variables injectées dans le conteneur au démarrage.
           env:
+            # Mode d’exécution applicatif. Le Fileserver et la console KM utilisent dev lorsque l’explorateur est publié.
             - name: KB_ENV
-              value: {{ .Values.global.environment | default "dev" | quote }}
+              value: {{ .Values.global.environment | quote }}
+            # Restreint les noms d’hôte HTTP acceptés par l’application.
             - name: ALLOWED_HOSTS
-              value: {{ tpl .Values.pdfparse.env.allowedHosts . | quote }}
+              value: {{ default (include "kbv1.host" (dict "root" . "name" "pdfparseStudio")) .Values.pdfparse.env.allowedHosts | quote }}
+            # Répertoire des modèles monté dans le conteneur.
             - name: MODELS_DIR
               value: {{ .Values.pdfparse.env.modelsDir | quote }}
+            # Racine du corpus lue par PdfParse.
             - name: DATA_DIR
               value: {{ .Values.pdfparse.env.dataDir | quote }}
+            # Répertoire de stockage des assets temporaires du Studio.
+            - name: PDFPARSE_ASSETS_DIR
+              value: /assets
+            # Identifiant Basic Auth de PdfParse Studio.
             - name: PDFPARSE_ADMIN_USER
-              value: {{ default .Values.pdfparse.env.adminUser .Values.basicAuth.pdfparse.user | quote }}
+              value: {{ .Values.pdfparse.env.adminUser | quote }}
+            # Injecte PDFPARSE_ADMIN_PASSWORD depuis le Secret runtime.
             - name: PDFPARSE_ADMIN_PASSWORD
+              # Source de cette variable, résolue par Kubernetes.
               valueFrom:
+                # Lit la valeur dans un Secret du namespace.
                 secretKeyRef:
+                  # Nom du Secret runtime partagé par les composants.
                   name: {{ include "kbv1.secretName" . }}
+                  # Clé du Secret injectée dans cette variable.
                   key: PDFPARSE_ADMIN_PASSWORD
+          # Points de montage visibles dans le conteneur.
           volumeMounts:
+            # Nom du volume à monter, défini dans la liste des volumes du pod.
             - name: corpus-storage
+              # Emplacement du volume dans le conteneur.
               mountPath: {{ .Values.pdfparse.env.dataDir }}
+            # Nom du volume à monter, défini dans la liste des volumes du pod.
             - name: models-storage
+              # Emplacement du volume dans le conteneur.
               mountPath: {{ .Values.pdfparse.env.modelsDir }}
+              # Interdit les écritures dans ce montage.
               readOnly: true
+            # Nom du volume à monter, défini dans la liste des volumes du pod.
             - name: assets-storage
+              # Emplacement du volume dans le conteneur.
               mountPath: /assets
+          # Redémarre le conteneur après des échecs répétés.
           livenessProbe:
-            httpGet:
-              path: /health
-              port: 8000
+            # Vérifie que l’application écoute sans fournir d’identifiants HTTP.
+            tcpSocket:
+              # Port du conteneur interrogé par la sonde.
+              port: http
+            # Délai avant le début des vérifications, en secondes.
             initialDelaySeconds: 15
+            # Intervalle entre deux vérifications, en secondes.
             periodSeconds: 20
+            # Délai maximal d’une vérification, en secondes.
             timeoutSeconds: 5
+          # Retire le pod des endpoints du Service tant que le contrôle échoue.
           readinessProbe:
-            httpGet:
-              path: /health
-              port: 8000
+            # Vérifie que l’application écoute sans fournir d’identifiants HTTP.
+            tcpSocket:
+              # Port du conteneur interrogé par la sonde.
+              port: http
+            # Délai avant le début des vérifications, en secondes.
             initialDelaySeconds: 10
+            # Intervalle entre deux vérifications, en secondes.
             periodSeconds: 10
+            # Délai maximal d’une vérification, en secondes.
             timeoutSeconds: 5
+          # Demandes et limites de ressources Kubernetes.
           resources:
-            {{- toYaml .Values.pdfparse.resources | nindent 12 }}
+            {{- /* Copie les ressources CPU et RAM avant de fusionner la demande GPU. */ -}}
+            {{- $resources := deepCopy .Values.pdfparse.resources }}
+            {{- /* Rend cette ressource uniquement si la fonctionnalité est activée. */ -}}
             {{- if .Values.pdfparse.gpu.enabled }}
-            limits:
-              nvidia.com/gpu: {{ .Values.pdfparse.gpu.count | quote }}
+            {{- /* Réserve exactement un GPU sans supprimer les demandes CPU et RAM. */ -}}
+            {{- $resources = mergeOverwrite $resources (dict "requests" (dict "nvidia.com/gpu" 1) "limits" (dict "nvidia.com/gpu" 1)) }}
             {{- end }}
+            {{- toYaml $resources | nindent 12 }}
+      # Sources des volumes utilisés par le pod.
       volumes:
+        # Nom du volume dans le pod.
         - name: corpus-storage
+          {{- /* Utilise le stockage persistant lorsque le mode PVC est sélectionné. */ -}}
           {{- if eq .Values.sharedStorage.corpus.type "pvc" }}
+          # Monte le volume persistant déclaré par un PVC.
           persistentVolumeClaim:
+            # Sélectionne le PVC fourni ou le nom généré par la release.
             claimName: {{ if .Values.sharedStorage.corpus.pvcName }}{{ .Values.sharedStorage.corpus.pvcName }}{{ else }}{{ include "kbv1.fullname" . }}-corpus{{ end }}
+          {{- /* Utilise le chemin local du nœud lorsque le mode hostPath est sélectionné. */ -}}
           {{- else if eq .Values.sharedStorage.corpus.type "hostPath" }}
+          # Utilise un chemin local du nœud qui héberge le pod.
           hostPath:
+            # Chemin utilisé par cette ressource.
             path: {{ .Values.sharedStorage.corpus.hostPath }}
+            # Exige un répertoire existant sur le nœud.
             type: Directory
           {{- else }}
+          # Crée un volume temporaire supprimé avec le pod.
           emptyDir: {}
           {{- end }}
+        # Nom du volume dans le pod.
         - name: models-storage
+          {{- /* Utilise le stockage persistant lorsque le mode PVC est sélectionné. */ -}}
           {{- if eq .Values.sharedStorage.models.type "pvc" }}
+          # Monte le volume persistant déclaré par un PVC.
           persistentVolumeClaim:
+            # Sélectionne le PVC fourni ou le nom généré par la release.
             claimName: {{ if .Values.sharedStorage.models.pvcName }}{{ .Values.sharedStorage.models.pvcName }}{{ else }}{{ include "kbv1.fullname" . }}-models{{ end }}
+          {{- /* Utilise le chemin local du nœud lorsque le mode hostPath est sélectionné. */ -}}
           {{- else if eq .Values.sharedStorage.models.type "hostPath" }}
+          # Utilise un chemin local du nœud qui héberge le pod.
           hostPath:
+            # Chemin utilisé par cette ressource.
             path: {{ .Values.sharedStorage.models.hostPath }}
+            # Exige un répertoire existant sur le nœud.
             type: Directory
           {{- else }}
+          # Crée un volume temporaire supprimé avec le pod.
           emptyDir: {}
           {{- end }}
+        # Nom du volume dans le pod.
         - name: assets-storage
+          {{- /* Utilise le stockage persistant lorsque le mode PVC est sélectionné. */ -}}
           {{- if eq .Values.sharedStorage.pdfparseAssets.type "pvc" }}
+          # Monte le volume persistant déclaré par un PVC.
           persistentVolumeClaim:
+            # Sélectionne le PVC fourni ou le nom généré par la release.
             claimName: {{ if .Values.sharedStorage.pdfparseAssets.pvcName }}{{ .Values.sharedStorage.pdfparseAssets.pvcName }}{{ else }}{{ include "kbv1.fullname" . }}-pdfparse-assets{{ end }}
           {{- else }}
+          # Crée un volume temporaire supprimé avec le pod.
           emptyDir: {}
           {{- end }}
 {{- end }}

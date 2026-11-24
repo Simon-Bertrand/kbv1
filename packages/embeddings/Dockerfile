@@ -1,15 +1,30 @@
-FROM knowledgebase/build-km-encoder:local
-ENV PATH=/opt/venv/bin:$PATH PYTHONDONTWRITEBYTECODE=1 PYTHONUNBUFFERED=1 PIP_NO_INDEX=1 \
+ARG BUILD_IMAGE_PREFIX=knowledgebase
+FROM ${BUILD_IMAGE_PREFIX}/wheelhouse-preparer:local AS dependencies
+ARG WHEEL_SOURCE=upstream
+WORKDIR /workspace
+COPY --from=workspace pyproject.toml uv.lock ./
+COPY --from=workspace packages/km-api/pyproject.toml ./packages/km-api/
+COPY --from=workspace packages/embeddings/pyproject.toml ./packages/embeddings/
+COPY --from=workspace packages/km-frontend/pyproject.toml ./packages/km-frontend/
+COPY --from=workspace packages/pdfparse/pyproject.toml ./packages/pdfparse/
+COPY --from=workspace scripts/docker/wheelhouse.py /opt/resolve-wheels.py
+RUN --mount=type=secret,id=pip_index_url \
+    --mount=type=secret,id=pip_cert \
+    python /opt/resolve-wheels.py resolve "km-encoder" /resolved
+
+FROM ${BUILD_IMAGE_PREFIX}/base-python:local
+ENV PYTHONDONTWRITEBYTECODE=1 PYTHONUNBUFFERED=1 \
     MODELS_DIR=/models HF_HUB_OFFLINE=1 TRANSFORMERS_OFFLINE=1 HF_HUB_DISABLE_TELEMETRY=1 HF_HOME=/tmp/huggingface
 WORKDIR /build
-COPY pyproject.toml uv.lock ./
-COPY packages/km-api/pyproject.toml packages/km-api/README.md ./packages/km-api/
-COPY packages/embeddings/pyproject.toml packages/embeddings/README.md ./packages/embeddings/
-RUN sha256sum -c /opt/offline/km-encoder.sha256
-COPY packages/km-api/src/ ./packages/km-api/src/
-COPY packages/embeddings/src/ ./packages/embeddings/src/
-RUN mkdir /build/tmp \
-    && TMPDIR=/build/tmp python -m pip install --no-cache-dir --no-index --no-deps --no-build-isolation ./packages/km-api ./packages/embeddings \
+COPY --from=workspace pyproject.toml uv.lock ./
+COPY --from=workspace packages/km-api/pyproject.toml packages/km-api/README.md ./packages/km-api/
+COPY --from=workspace packages/embeddings/pyproject.toml packages/embeddings/README.md ./packages/embeddings/
+RUN --mount=type=bind,from=dependencies,source=/resolved,target=/wheelhouse \
+    python /opt/wheelhouse.py install km-encoder /wheelhouse /opt/venv
+ENV PATH=/opt/venv/bin:$PATH PIP_NO_INDEX=1
+COPY --from=workspace packages/km-api/src/ ./packages/km-api/src/
+COPY --from=workspace packages/embeddings/src/ ./packages/embeddings/src/
+RUN python -m pip install --no-index --no-deps --no-build-isolation ./packages/km-api ./packages/embeddings \
     && cd / && rm -rf /build
 WORKDIR /app
 RUN python -m pip check && python -c "import km; import km_embeddings; print('km-encoder validated')"

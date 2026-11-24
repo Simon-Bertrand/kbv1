@@ -1,13 +1,14 @@
-FROM knowledgebase/build-webui:local AS build
+ARG BUILD_IMAGE_PREFIX=knowledgebase
+FROM ${BUILD_IMAGE_PREFIX}/build-webui:local AS build
 WORKDIR /app
 COPY . .
 RUN sha256sum -c /opt/offline/webui.sha256
 ENV NEXT_TELEMETRY_DISABLED=1
 ARG WEBUI_GIT_COMMIT
 ARG WEBUI_GIT_BRANCH
-RUN npm run build
+RUN npm run prebuild && ./node_modules/.bin/next build --webpack
 
-FROM knowledgebase/base-webui:local
+FROM ${BUILD_IMAGE_PREFIX}/base-webui:local
 WORKDIR /app
 ENV NODE_ENV=production NEXT_TELEMETRY_DISABLED=1 HOSTNAME=0.0.0.0 PORT=4173
 COPY --from=build --chown=node:node /app/.next/standalone ./

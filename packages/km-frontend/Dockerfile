@@ -1,20 +1,39 @@
-FROM knowledgebase/build-km-frontend:local AS build
+ARG BUILD_IMAGE_PREFIX=knowledgebase
+FROM ${BUILD_IMAGE_PREFIX}/wheelhouse-preparer:local AS dependencies
+ARG WHEEL_SOURCE=upstream
+WORKDIR /workspace
+COPY --from=workspace pyproject.toml uv.lock ./
+COPY --from=workspace packages/km-api/pyproject.toml ./packages/km-api/
+COPY --from=workspace packages/embeddings/pyproject.toml ./packages/embeddings/
+COPY --from=workspace packages/km-frontend/pyproject.toml ./packages/km-frontend/
+COPY --from=workspace packages/pdfparse/pyproject.toml ./packages/pdfparse/
+COPY --from=workspace scripts/docker/wheelhouse.py /opt/resolve-wheels.py
+RUN --mount=type=secret,id=pip_index_url \
+    --mount=type=secret,id=pip_cert \
+    python /opt/resolve-wheels.py resolve "km-frontend-runtime" /resolved
+
+FROM ${BUILD_IMAGE_PREFIX}/build-km-frontend:local AS build
 WORKDIR /front
-COPY packages/km-frontend/package.json packages/km-frontend/package-lock.json ./
+COPY package.json package-lock.json ./
 RUN sha256sum -c /opt/offline/km-frontend.sha256
-COPY packages/km-frontend/index.html packages/km-frontend/vite.config.js ./
-COPY packages/km-frontend/src/ ./src/
-COPY packages/km-frontend/scripts/ ./scripts/
-COPY packages/km-frontend/tests/ ./tests/
+COPY index.html vite.config.js ./
+COPY src/ ./src/
+COPY scripts/ ./scripts/
+COPY tests/ ./tests/
 ENV npm_config_offline=true npm_config_audit=false npm_config_fund=false
 RUN npm run check && npm test && npm run build
 
-FROM knowledgebase/base-km-frontend:local
+FROM ${BUILD_IMAGE_PREFIX}/base-python:local
 WORKDIR /build
-COPY packages/km-frontend/requirements.lock ./requirements.lock
-RUN sha256sum -c /opt/offline/km-frontend-runtime.sha256 && rm -rf /build
+COPY --from=workspace pyproject.toml uv.lock ./
+COPY --from=workspace packages/km-frontend/pyproject.toml ./packages/km-frontend/
+RUN --mount=type=bind,from=dependencies,source=/resolved,target=/wheelhouse \
+    python /opt/wheelhouse.py install km-frontend-runtime /wheelhouse /opt/venv
+ENV PATH=/opt/venv/bin:$PATH PIP_NO_INDEX=1
+RUN rm -rf /build
 WORKDIR /app
-COPY packages/km-frontend/server.py packages/km-frontend/km_frontend_logging.py ./
+COPY server.py ./
+COPY src/__init__.py src/logging.py ./src/
 COPY --from=build /front/dist ./dist
 ENV PYTHONDONTWRITEBYTECODE=1 PYTHONUNBUFFERED=1 PIP_NO_INDEX=1
 USER 10001:10001

@@ -1,22 +1,35 @@
+{{- /* Rend cette ressource uniquement si la fonctionnalité est activée. */ -}}
 {{- if .Values.pdfparse.enabled }}
+# Version de l’API utilisée pour cette ressource.
 apiVersion: v1
+# Type de ressource que Kubernetes doit créer.
 kind: Service
+# Identité et étiquettes de la ressource.
 metadata:
+  # Nom de la ressource dans le namespace de la release.
   name: {{ include "kbv1.fullname" . }}-pdfparse
+  # Étiquettes Helm et identité de la release.
   labels:
     {{- include "kbv1.labels" . | nindent 4 }}
+    # Étiquette qui distingue ce composant des autres pods de la release.
     app.kubernetes.io/component: pdfparse
+# Configuration souhaitée pour cette ressource.
 spec:
-  type: {{ .Values.pdfparse.service.type }}
+  # Expose une IP interne au cluster.
+  type: ClusterIP
+  # Ports utilisés par cette ressource.
   ports:
+    # Port du Service auquel les autres pods se connectent.
     - port: {{ .Values.pdfparse.service.port }}
+      # Port d’écoute dans le pod vers lequel le Service transmet le trafic.
       targetPort: 8000
+      # Protocole de transport du port.
       protocol: TCP
+      # Nom de la ressource dans le namespace de la release.
       name: http
-      {{- if and (eq .Values.pdfparse.service.type "NodePort") .Values.pdfparse.service.nodePort }}
-      nodePort: {{ .Values.pdfparse.service.nodePort }}
-      {{- end }}
+  # Étiquettes des pods que cette ressource sélectionne.
   selector:
     {{- include "kbv1.selectorLabels" . | nindent 4 }}
+    # Étiquette qui distingue ce composant des autres pods de la release.
     app.kubernetes.io/component: pdfparse
 {{- end }}
