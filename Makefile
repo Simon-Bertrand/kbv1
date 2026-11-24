@@ -32,11 +32,14 @@ help:
 	  'SERVICES="webui km-api" permet de sélectionner des services.'
 
 prepare-build:
+	cd "$(ROOT)" && sha256sum -c docker/python/inputs.sha256
 	cd "$(ROOT)" && "$(PYTHON)" -m scripts.docker.build_bundle prepare --directory "$(TARBALL_DIR)/build" \
 	  --wheelhouse "$(WHEELHOUSE_DIR)" --pdfparse-profile "$(PDFPARSE_WHEEL_PROFILE)"
 
 prepare-bases:
-	cd "$(ROOT)" && "$(PYTHON)" -m scripts.docker.build_bundle bases
+	cd "$(ROOT)" && sha256sum -c docker/python/inputs.sha256
+	cd "$(ROOT)" && "$(PYTHON)" -m scripts.docker.build_bundle bases \
+	  --wheelhouse "$(WHEELHOUSE_DIR)" --pdfparse-profile "$(PDFPARSE_WHEEL_PROFILE)"
 
 import-build:
 	cd "$(ROOT)" && "$(PYTHON)" -m scripts.docker.build_bundle load --directory "$(TARBALL_DIR)/build"

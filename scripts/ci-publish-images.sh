@@ -56,8 +56,9 @@ for service in $services; do
     set --
     case "$service" in
         pdfparse|encoder|indexer|km-api|km-frontend)
-            set -- --build-context workspace=. --build-arg WHEEL_SOURCE=gitea \
-                --secret id=pip_index_url,env=PIP_INDEX_URL
+            set -- --build-context workspace=. --build-arg PYTHON_INDEX_SOURCE=gitea \
+                --build-arg "PIP_INDEX_URL=$PIP_INDEX_URL" \
+                --secret id=gitea_user,env=GITEA_USER --secret id=gitea_pat,env=GITEA_PAT
             if [ -n "${PIP_CERT:-}" ]; then
                 set -- "$@" --secret "id=pip_cert,src=$PIP_CERT"
             fi

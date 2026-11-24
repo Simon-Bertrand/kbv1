@@ -54,7 +54,7 @@ def prepare_bases(directory=None):
     if manifest.exists():
         previous = {item['image']: item for item in json.loads(manifest.read_text())['images']}
     images = []
-    for tag in TAGS.values():
+    for tag in published_tags():
         info = json.loads(run(['docker', 'image', 'inspect', tag], True))[0]
         archive = directory / image_archive_name(tag)
         cached = previous.get(tag, {})
@@ -83,14 +83,19 @@ def prepare_bases(directory=None):
     retire_archives(directory, {item['archive'] for item in previous.values()}, images)
 
 
-def prepare_wheelhouse(directory, profile):
+def prepare_wheelhouse(directory, profile, native_only=False):
     directory = directory.resolve()
     directory.mkdir(parents=True, exist_ok=True)
     tag = TAGS['wheelhouse-preparer']
+    mode = ['--native-only'] if native_only else []
     run(['docker', 'run', '--rm', '--pull=never', '--user', f'{os.getuid()}:{os.getgid()}',
          '--env', 'HOME=/tmp', '--volume', f'{ROOT}:/workspace:ro',
          '--volume', f'{directory}:/wheelhouse', '--workdir', '/workspace',
-         tag, 'python', '/opt/wheelhouse.py', 'prepare', '/wheelhouse', '--pdfparse-profile', profile])
+         tag, 'python', '/opt/wheelhouse.py', 'prepare', '/wheelhouse', '--pdfparse-profile', profile, *mode])
+
+
+def published_tags():
+    return [tag for name, tag in TAGS.items() if name != 'wheelhouse-preparer']
 
 
 def load(directory):
@@ -98,7 +103,7 @@ def load(directory):
     if manifest.get('kind') != 'build-dependencies' or manifest.get('version') != 1:
         raise SystemExit('Unsupported build bundle.')
     images = {i['image'] for i in manifest['images']}
-    expected = {TAGS[name] for name in (*PREPARED_TARGETS, *UPSTREAM)}
+    expected = set(published_tags())
     if not expected <= images:
         raise SystemExit('Incomplete build bundle.')
     items = [item for item in manifest['images'] if item['image'] in expected]
@@ -114,7 +119,7 @@ def load(directory):
 
 def publish(directory, registry):
     load(directory)
-    for image in TAGS.values():
+    for image in published_tags():
         repository = image.split('/')[-1].split(':')[0]
         target = f'{registry}/{repository}:latest'
         run(['docker', 'tag', image, target])
@@ -140,6 +145,7 @@ def main():
         prepare_wheelhouse(args.wheelhouse, args.pdfparse_profile)
     elif args.action == 'bases':
         prepare_bases()
+        prepare_wheelhouse(args.wheelhouse, args.pdfparse_profile, native_only=True)
     elif args.action == 'publish':
         if not args.registry:
             parser.error('publish requires --registry')

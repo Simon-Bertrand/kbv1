@@ -152,6 +152,10 @@ def install_entries(entries, wheels, python, *, target=None):
             '--no-deps', '--require-hashes', '--no-compile', *options, '-r', requirements, python=python)
 
 
+def native_version():
+    return 'kb.' + sha256(Path('uv.lock'))[:16]
+
+
 def build_native(package, dependencies, cuda_requirements, resolve, wheels, output):
     key_data = [package, dependencies, {name: str(req) for name, req in cuda_requirements.items()},
                 sys.version, platform.libc_ver(),
@@ -177,7 +181,7 @@ def build_native(package, dependencies, cuda_requirements, resolve, wheels, outp
         (cuda / 'lib/libcudart.so').symlink_to('libcudart.so.13')
         source = download(package['sdist'], scratch)
         env = {**os.environ, 'CUDA_HOME': str(cuda), 'CAUSAL_CONV1D_FORCE_BUILD': 'TRUE',
-               'CAUSAL_CONV1D_LOCAL_VERSION': f'kb.{key[:16]}',
+               'CAUSAL_CONV1D_LOCAL_VERSION': native_version(),
                'MAX_JOBS': os.environ.get('MAX_JOBS', '2'), 'TMPDIR': str(scratch),
                'PATH': f'{python.parent}:{os.environ["PATH"]}'}
         pip('wheel', '--no-index', '--no-deps', '--no-build-isolation', '--wheel-dir', scratch,
@@ -223,7 +227,7 @@ def publishable_manifest(wheels, profile, manifest):
             archive.writestr(zipfile.ZipInfo(member), data)
 
 
-def prepare(output, pdfparse_profile, only=None):
+def prepare(output, pdfparse_profile, only=None, native_only=False):
     from pip._vendor.packaging.tags import sys_tags
     from pip._vendor.packaging.utils import canonicalize_name
 
@@ -252,7 +256,7 @@ def prepare(output, pdfparse_profile, only=None):
     selections = {profile: profile_requirements(profile, tools) for profile in profiles}
     for profile, requirements in selections.items():
         print(f'Preparing wheelhouse for {profile}', flush=True)
-        dependencies = [resolve(req) for name, req in requirements.items() if name != NATIVE_PACKAGE]
+        dependencies = [] if native_only else [resolve(req) for name, req in requirements.items() if name != NATIVE_PACKAGE]
         if NATIVE_PACKAGE in requirements:
             native_inputs = [resolve(req) for req in profile_requirements('km-encoder', tools).values()]
             native_inputs.extend(resolve(requirements[name]) for name in ('ninja', 'packaging'))
@@ -260,6 +264,14 @@ def prepare(output, pdfparse_profile, only=None):
             cuda = export('--only-group', 'cuda-build')
             dependencies.append(build_native(find_package(requirements[NATIVE_PACKAGE]), native_inputs,
                                              cuda, resolve, wheels, output))
+
+        if native_only:
+            context = output / 'native'
+            context.mkdir(exist_ok=True)
+            link = context / 'pdfparse-native.whl'
+            link.unlink(missing_ok=True)
+            os.link(wheels / dependencies[0]['file'], link)
+            return
 
         manifest = {'profile': profile, 'inputs': inputs(profile, Path.cwd()),
                     'wheels': sorted(dependencies, key=lambda item: item['name'])}
@@ -388,6 +400,7 @@ def main():
     for action in ('prepare', 'fetch', 'install', 'resolve'):
         command = subcommands.add_parser(action)
         if action == 'prepare':
+            command.add_argument('--native-only', action='store_true')
             command.add_argument('--pdfparse-profile', choices=('pdfparse', 'pdfparse-full'), default='pdfparse')
         else:
             command.add_argument('profile', choices=PROFILES)
@@ -408,7 +421,8 @@ def main():
         directory.mkdir(parents=True, exist_ok=True)
         with (directory / '.prepare.lock').open('a') as lock:
             fcntl.flock(lock, fcntl.LOCK_EX)
-            prepare(directory, args.pdfparse_profile)
+            prepare(directory, args.pdfparse_profile,
+                    only=args.pdfparse_profile if args.native_only else None, native_only=args.native_only)
     elif args.action == 'resolve':
         resolve_profile(args.profile, args.directory)
     elif args.action == 'fetch':

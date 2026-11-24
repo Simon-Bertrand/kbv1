@@ -78,8 +78,11 @@ services:
     image: kbv1/pdfparse:local
     pull_policy: never
     build:
-      <<: *python-build
+      network: default
       context: ./packages/pdfparse
+      additional_contexts:
+        workspace: .
+        pdfparse_native: ${WHEELHOUSE_DIR:-./.wheelhouse}/native
       args:
         PDFPARSE_WHEEL_PROFILE: ${PDFPARSE_WHEEL_PROFILE:-pdfparse}
     environment:

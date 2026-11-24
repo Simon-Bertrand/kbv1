@@ -2,6 +2,7 @@ stages: [package, deploy]
 
 variables:
   REGISTRY_PATH: "$CI_REGISTRY_IMAGE"
+  PIP_INDEX_URL: "https://${GITEA_HOST}/api/packages/${GITEA_OWNER}/pypi/simple"
   VERSION: "1.0.0"
   BUILDAH_IMAGE: "${GITEA_BASE_REGISTRY}/ci-buildah:latest"
   HELM_IMAGE: "${GITEA_BASE_REGISTRY}/ci-helm:latest"
@@ -9,143 +10,98 @@ variables:
 
 .package-image:
   stage: package
+  resource_group: kbv1-package-storage
   image: "$BUILDAH_IMAGE"
   variables:
-    STORAGE_DRIVER: vfs
+    STORAGE_DRIVER: overlay
   before_script:
-    - PACKAGE_NAME="${CI_JOB_NAME#package:}"
-    - IMAGE="$REGISTRY_PATH/km-${PACKAGE_NAME#km-}:$VERSION"
-    - buildah login -u "${REGISTRY_USER:-$CI_REGISTRY_USER}" -p "${REGISTRY_PASSWORD:-$CI_REGISTRY_PASSWORD}" "${REGISTRY_PATH%%/*}"
-    - ': "${GITEA_BASE_REGISTRY:?Configurer le registre des bases Gitea dans GitLab CI/CD}"'
     - |
-      if [ -n "${GITEA_USER:-}" ]; then
-        printf '%s' "${GITEA_TOKEN:?Configurer GITEA_TOKEN}" |
-          buildah login --username "$GITEA_USER" --password-stdin "${GITEA_BASE_REGISTRY%%/*}"
-      fi
-    - 'pull_base() { buildah pull "$GITEA_BASE_REGISTRY/$1:latest" && buildah tag "$GITEA_BASE_REGISTRY/$1:latest" "knowledgebase/$1:local"; }'
+      printf '%s' "${GITEA_PAT:?Configurer GITEA_PAT}" |
+        buildah login --username "${GITEA_USER:?Configurer GITEA_USER}" --password-stdin "${GITEA_BASE_REGISTRY%%/*}"
+    - |
+      package=${CI_JOB_NAME#package:}
+      repository="$REGISTRY_PATH/km-${package#km-}"
+      image="$repository:$VERSION"
+      for base in $BASE_IMAGES; do
+        source="$GITEA_BASE_REGISTRY/$base:latest"
+        buildah pull "$source"
+        buildah tag "$source" "knowledgebase/$base:local"
+      done
   script:
-    - &build-image |
-      set --
-      network=none
-      if [ -n "${WORKSPACE_CONTEXT:-}" ]; then
-        : "${PIP_INDEX_URL:?Définir PIP_INDEX_URL dans les variables CI/CD GitLab}"
-        pull_base wheelhouse-preparer
-        network=host
-        set -- --build-context "workspace=$WORKSPACE_CONTEXT" \
-          --secret id=pip_index_url,src=PIP_INDEX_URL,type=env \
-          --build-arg WHEEL_SOURCE=gitea
-        if [ -n "${PIP_CERT:-}" ]; then
-          set -- "$@" --secret "id=pip_cert,src=$PIP_CERT"
-        fi
-        if [ "$PACKAGE_NAME" = pdfparse ]; then
-          set -- "$@" --build-arg "PDFPARSE_WHEEL_PROFILE=${PDFPARSE_WHEEL_PROFILE:-pdfparse}"
-        else
-          pull_base base-python
-        fi
-      fi
-      buildah bud "$@" --format=docker --pull=never --network="$network" \
-        -f "$DOCKERFILE" -t "$IMAGE" "$BUILD_CONTEXT"
-    - &push-image buildah push "$IMAGE"
-    - &push-latest buildah push "$IMAGE" "docker://${IMAGE%:*}:latest"
+    - 'set -- --network=none'
+    - &build-and-push |
+      buildah bud --format=docker --layers=false --force-rm --pull=never \
+        "$@" -f "$BUILD_CONTEXT/Dockerfile" -t "$image" "$BUILD_CONTEXT"
+      buildah push "$image"
+      buildah push "$image" "docker://$repository:latest"
+  after_script:
+    - |
+      package=${CI_JOB_NAME#package:}
+      buildah rmi "$REGISTRY_PATH/km-${package#km-}:$VERSION" || true
+
+.package-python:
+  extends: .package-image
+  script:
+    - sha256sum -c docker/python/inputs.sha256
+    - |
+      set -- --network=host --build-context workspace=. \
+        --build-arg PYTHON_INDEX_SOURCE=gitea \
+        --build-arg "PIP_INDEX_URL=${PIP_INDEX_URL:?Configurer PIP_INDEX_URL}" \
+        --secret id=gitea_user,env=GITEA_USER \
+        --secret id=gitea_pat,env=GITEA_PAT
+      test -z "${PIP_CERT:-}" || set -- "$@" --secret "id=pip_cert,src=$PIP_CERT"
+      test -z "${PDFPARSE_BUILD:-}" ||
+        set -- "$@" --build-arg "PDFPARSE_WHEEL_PROFILE=${PDFPARSE_WHEEL_PROFILE:-pdfparse}"
+    - *build-and-push
 
 package:postgres:
   extends: .package-image
   variables:
-    DOCKERFILE: packages/database/Dockerfile
     BUILD_CONTEXT: packages/database
-  script:
-    - pull_base base-pg-textsearch
-    - pull_base base-pgvectorscale
-    - pull_base base-pgvector
-    - pull_base base-postgres
-    - *build-image
-    - *push-image
-    - *push-latest
-
+    BASE_IMAGES: "base-pg-textsearch base-pgvectorscale base-pgvector base-postgres"
 
 package:encoder:
-  extends: .package-image
-  resource_group: kbv1-gpu-build
+  extends: .package-python
   variables:
-    DOCKERFILE: packages/embeddings/Dockerfile
     BUILD_CONTEXT: packages/embeddings
-    WORKSPACE_CONTEXT: "."
-  script:
-    - *build-image
-    - *push-image
-    - *push-latest
+    BASE_IMAGES: "base-python"
 
 package:indexer:
-  extends: .package-image
+  extends: .package-python
   variables:
-    DOCKERFILE: packages/embeddings/indexer/Dockerfile
     BUILD_CONTEXT: packages/embeddings/indexer
-    WORKSPACE_CONTEXT: "."
-  script:
-    - *build-image
-    - *push-image
-    - *push-latest
+    BASE_IMAGES: "base-python"
 
 package:fileserver:
   extends: .package-image
   variables:
-    DOCKERFILE: packages/fileserver/Dockerfile
     BUILD_CONTEXT: packages/fileserver
-  script:
-    - pull_base base-fileserver
-    - pull_base build-fileserver
-    - *build-image
-    - *push-image
-    - *push-latest
+    BASE_IMAGES: "base-fileserver build-fileserver"
 
 package:km-api:
-  extends: .package-image
+  extends: .package-python
   variables:
-    DOCKERFILE: packages/km-api/Dockerfile
     BUILD_CONTEXT: packages/km-api
-    WORKSPACE_CONTEXT: "."
-  script:
-    - *build-image
-    - *push-image
-    - *push-latest
+    BASE_IMAGES: "base-python"
 
 package:km-frontend:
-  extends: .package-image
+  extends: .package-python
   variables:
-    DOCKERFILE: packages/km-frontend/Dockerfile
     BUILD_CONTEXT: packages/km-frontend
-    WORKSPACE_CONTEXT: "."
-  script:
-    - pull_base build-km-frontend
-    - *build-image
-    - *push-image
-    - *push-latest
+    BASE_IMAGES: "build-km-frontend base-python"
 
 package:pdfparse:
-  extends: .package-image
-  resource_group: kbv1-gpu-build
+  extends: .package-python
   variables:
-    DOCKERFILE: packages/pdfparse/Dockerfile
     BUILD_CONTEXT: packages/pdfparse
-    WORKSPACE_CONTEXT: "."
-  script:
-    - pull_base build-frontend
-    - pull_base base-python-pdf
-    - *build-image
-    - *push-image
-    - *push-latest
+    PDFPARSE_BUILD: "1"
+    BASE_IMAGES: "build-frontend base-python-pdf"
 
 package:webui:
   extends: .package-image
   variables:
-    DOCKERFILE: packages/webui/Dockerfile
     BUILD_CONTEXT: packages/webui
-  script:
-    - pull_base build-webui
-    - pull_base base-webui
-    - *build-image
-    - *push-image
-    - *push-latest
+    BASE_IMAGES: "build-webui base-webui"
 
 deploy:preprod:
   stage: deploy

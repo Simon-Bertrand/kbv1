@@ -10,10 +10,10 @@ L’étape `package` de [`.gitlab-ci.yml`](.gitlab-ci.yml) construit et publie l
 | --- | --- |
 | `REGISTRY_PATH` | Chemin du registre et de son namespace, par exemple `registry.example.org/team/kbv1`. Par défaut, `CI_REGISTRY_IMAGE`. |
 | `REGISTRY_USER`, `REGISTRY_PASSWORD` | Identifiants à fournir pour un registre externe. Le registre GitLab du projet utilise par défaut les identifiants prédéfinis. |
-| `PIP_INDEX_URL` | URL de l’index PyPI Gitea, avec `/simple`. Définir cette variable GitLab comme masquée si l’URL contient des identifiants. |
+| `PIP_INDEX_URL` | Définie en haut de `.gitlab-ci.yml` à partir de `GITEA_HOST` (hôte sans protocole) et `GITEA_OWNER` (organisation ou compte Gitea). Laisser les identifiants dans `GITEA_USER` et `GITEA_PAT`. |
 | `PIP_CERT` | Variable GitLab de type fichier pour une autorité de certification interne. |
 | `GITEA_BASE_REGISTRY` | Préfixe des images de base et de CI, par exemple `gitea.exemple/organisation`. |
-| `GITEA_USER`, `GITEA_TOKEN` | Identifiants de lecture des images de base privées. Configurer aussi l’authentification du runner pour tirer les images de job privées avant leur démarrage. |
+| `GITEA_USER`, `GITEA_PAT` | Identifiants de lecture des images de base et des wheels Gitea. Définir le PAT comme variable masquée. Configurer aussi l’authentification du runner pour tirer les images de job privées avant leur démarrage. |
 | `VERSION` | Tag des images publiées, `1.0.0` par défaut. |
 
 ### Préproduction sans accès à Internet
@@ -30,8 +30,8 @@ GITEA_PYPI_UPLOAD_URL=https://gitea.exemple/api/packages/organisation/pypi ./scr
 
 Configurer `TWINE_USERNAME` et `TWINE_PASSWORD` avant la publication des wheels.
 Le premier script charge les archives vérifiées et pousse les images ainsi que
-les images de job Buildah et Helm. Le runner récupère les wheels et leurs
-manifestes depuis Gitea et publie les images applicatives vers `REGISTRY_PATH`.
+les images de job Buildah et Helm. Le runner installe directement les wheels de Gitea avec pip, sans cache ni
+compilation de dépendances. Il publie les images applicatives vers `REGISTRY_PATH`.
 Ce registre doit être accessible au runner et au cluster. Si le runner utilise une image auxiliaire, configurer aussi sa copie sur un registre interne. Pour le profil PdfParse
 complet, utiliser `PDFPARSE_WHEEL_PROFILE=pdfparse-full` à la préparation et
 dans GitLab CI/CD.
@@ -45,10 +45,23 @@ docker compose up -d --build
 
 Renseigner le fichier `.env` à partir de `.env.example`, et préparer les
 répertoires de données et de modèles. `make prepare-bases` construit les bases
-Docker locales sous `knowledgebase/*:local`. Les builds Compose téléchargent
-les artefacts publics verrouillés (PyPI et les sources spécialisées déclarées
-dans `uv.lock`) et compilent le kernel CUDA requis par PdfParse. Aucun artefact
-Gitea n’est requis en développement.
+Docker locales sous `knowledgebase/*:local` et compile la wheel CUDA de PdfParse
+sur la machine de dev. Les builds Compose installent cette wheel et téléchargent
+les autres dépendances depuis PyPI et les index spécialisés publics. Aucun
+artefact Gitea n’est requis en développement.
+
+Les fichiers dans `docker/python/` fixent toutes les versions installées dans
+les deux environnements, y compris les dépendances transitives. Après avoir
+modifié le verrou, les régénérer sur Linux x86-64 avec Python 3.12 et uv.
+
+```sh
+python3.12 -m scripts.docker.pins
+```
+
+En préproduction, les jobs de build passent un à la fois. Buildah utilise un
+stockage overlay standard du runner. Le job supprime le tag local de
+l’image applicative après publication. Le runner doit prendre en charge overlay. Vérifier le pic disque pendant le premier build
+PdfParse sur le runner de 30 Go.
 
 La synchronisation avec Knowledgebase porte sur `packages/`. Chaque dépôt
 maintient son verrou, son workspace et sa configuration de build.

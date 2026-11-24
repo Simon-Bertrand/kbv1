@@ -5,8 +5,15 @@ set -eu
 : "${TWINE_USERNAME:?Identifiant Gitea}"
 : "${TWINE_PASSWORD:?Jeton Gitea}"
 
-set -- "${WHEELHOUSE_DIR:-.wheelhouse}"/wheels/*.whl
-if [ ! -f "$1" ]; then
+set --
+for wheel in "${WHEELHOUSE_DIR:-.wheelhouse}"/wheels/*.whl; do
+    [ -f "$wheel" ] || continue
+    case "${wheel##*/}" in
+        kbv1_wheelhouse_*) continue ;;
+    esac
+    set -- "$@" "$wheel"
+done
+if [ "$#" -eq 0 ]; then
     printf 'Aucune wheel trouvée. Lancer make prepare-build.\n' >&2
     exit 1
 fi

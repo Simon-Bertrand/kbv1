@@ -1,17 +1,6 @@
 ARG BUILD_IMAGE_PREFIX=knowledgebase
-FROM ${BUILD_IMAGE_PREFIX}/wheelhouse-preparer:local AS dependencies
-ARG WHEEL_SOURCE=upstream
-ARG PDFPARSE_WHEEL_PROFILE=pdfparse
-WORKDIR /workspace
-COPY --from=workspace pyproject.toml uv.lock ./
-COPY --from=workspace packages/km-api/pyproject.toml ./packages/km-api/
-COPY --from=workspace packages/embeddings/pyproject.toml ./packages/embeddings/
-COPY --from=workspace packages/km-frontend/pyproject.toml ./packages/km-frontend/
-COPY --from=workspace packages/pdfparse/pyproject.toml ./packages/pdfparse/
-COPY --from=workspace scripts/docker/wheelhouse.py /opt/resolve-wheels.py
-RUN --mount=type=secret,id=pip_index_url \
-    --mount=type=secret,id=pip_cert \
-    python /opt/resolve-wheels.py resolve "${PDFPARSE_WHEEL_PROFILE}" /resolved
+# Compose overrides this context with the locally prepared CUDA wheel.
+FROM ${BUILD_IMAGE_PREFIX}/base-python-pdf:local AS pdfparse_native
 
 # All FROM images are local and exported by make prepare-build.
 FROM ${BUILD_IMAGE_PREFIX}/build-frontend:local AS frontend
@@ -37,14 +26,20 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
 ENV HF_HUB_DISABLE_TELEMETRY=1 DO_NOT_TRACK=1 \
     PADDLE_PDX_DISABLE_MODEL_SOURCE_CHECK=True
 WORKDIR /build
-COPY --from=workspace pyproject.toml uv.lock ./
-COPY --from=workspace packages/pdfparse/pyproject.toml packages/pdfparse/README.md ./packages/pdfparse/
-RUN --mount=type=bind,from=dependencies,source=/resolved,target=/wheelhouse \
-    python /opt/wheelhouse.py install pdfparse /wheelhouse /opt/venv
+ARG PYTHON_INDEX_SOURCE=public
+ARG PIP_INDEX_URL
+COPY --from=workspace docker/python/install.sh /opt/install-python.sh
+ARG PDFPARSE_WHEEL_PROFILE=pdfparse
+COPY --from=workspace docker/python/pdfparse*.txt /opt/pins/
 ENV PATH=/opt/venv/bin:$PATH PIP_NO_INDEX=1
+COPY --from=workspace packages/pdfparse/pyproject.toml packages/pdfparse/README.md ./packages/pdfparse/
 COPY src/ ./packages/pdfparse/src/
 COPY --from=frontend /front/dist/ ./packages/pdfparse/src/pdfparse/front/dist/
-RUN python -m pip install --no-index --no-deps --no-build-isolation ./packages/pdfparse && rm -rf /build
+RUN --mount=type=secret,id=gitea_user,env=GITEA_USER \
+    --mount=type=secret,id=gitea_pat,env=GITEA_PAT \
+    --mount=type=secret,id=pip_cert \
+    --mount=type=bind,from=pdfparse_native,source=/,target=/opt/native \
+    sh /opt/install-python.sh "${PDFPARSE_WHEEL_PROFILE}" ./packages/pdfparse && rm -rf /build
 RUN groupadd --gid 1000 pdfparse \
     && useradd --uid 1000 --gid pdfparse --create-home pdfparse \
     && mkdir -p /data /app /assets /pdfparse-cache "$HF_HOME" "$TORCH_HOME" "$DOCLING_CACHE_DIR" \
