@@ -10,6 +10,9 @@ esac
 : "${CI_REGISTRY_IMAGE:?}"
 : "${CI_COMMIT_SHA:?}"
 : "${PIP_INDEX_URL:?Set PIP_INDEX_URL to the Gitea PyPI index}"
+: "${GITEA_USER:?}" "${GITEA_PAT:?}"
+export PIP_INDEX_URL="https://${GITEA_USER}:${GITEA_PAT}@${PIP_INDEX_URL#https://}"
+export PIP_TRUSTED_HOST="${PIP_TRUSTED_HOST:-}"
 if [ "$publish" = yes ]; then
     : "${CI_REGISTRY:?}"
     : "${CI_REGISTRY_USER:?}"
@@ -56,12 +59,8 @@ for service in $services; do
     set --
     case "$service" in
         pdfparse|encoder|indexer|km-api|km-frontend)
-            set -- --build-context workspace=. --build-arg PYTHON_INDEX_SOURCE=gitea \
-                --build-arg "PIP_INDEX_URL=$PIP_INDEX_URL" \
-                --secret id=gitea_user,env=GITEA_USER --secret id=gitea_pat,env=GITEA_PAT
-            if [ -n "${PIP_CERT:-}" ]; then
-                set -- "$@" --secret "id=pip_cert,src=$PIP_CERT"
-            fi
+            set -- --build-context workspace=. --provenance=false \
+                --build-arg PIP_INDEX_URL --build-arg PIP_TRUSTED_HOST
             if [ "$service" = pdfparse ]; then
                 set -- "$@" --build-arg "PDFPARSE_WHEEL_PROFILE=${PDFPARSE_WHEEL_PROFILE:-pdfparse}"
             fi

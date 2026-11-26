@@ -1,4 +1,3 @@
-{{- /* Refuse les modes d’authentification WebUI inconnus. */ -}}
 {{- if and .Values.webui.enabled (not (has .Values.webui.env.authMode (list "admin" "oidc"))) -}}
 {{- fail "webui.env.authMode doit valoir admin ou oidc" -}}
 {{- end -}}
@@ -6,17 +5,12 @@
 {{- if and .Values.webui.enabled .Values.ingress.enabled (not .Values.webui.env.fileserverPublicUrl) (not (and .Values.fileserver.enabled .Values.ingress.fileserverExposed)) -}}
 {{- fail "La WebUI exige l’Ingress Fileserver ou une URL publique Fileserver explicite" -}}
 {{- end -}}
-{{- /* Vérifie les paramètres de publication lorsque l’Ingress est activé. */ -}}
 {{- if .Values.ingress.enabled -}}
-{{- /* Exige un domaine, une classe Ingress et des sélecteurs de pods précis. */ -}}
 {{- if or (not .Values.domain_name) (not .Values.ingress.className) (not .Values.networkPolicy.ingressController.namespace) (not .Values.networkPolicy.ingressController.podLabels) -}}
 {{- fail "Renseigner le domaine, la classe et les sélecteurs du contrôleur Ingress" -}}
 {{- end -}}
-{{- /* Enregistre les sous-domaines rencontrés pour détecter les doublons. */ -}}
 {{- $hosts := list -}}
-{{- /* Vérifie chaque sous-domaine configuré. */ -}}
 {{- range $name, $subdomain := .Values.ingress.subdomains -}}
-{{- /* Refuse les hôtes vides ou partagés qui rendraient le routage ambigu. */ -}}
 {{- if or (not $subdomain) (has $subdomain $hosts) -}}
 {{- fail (printf "Sous-domaine Ingress vide ou dupliqué pour %s" $name) -}}
 {{- end -}}
@@ -29,11 +23,17 @@
 {{- end -}}
 {{- end -}}
 {{- end -}}
-{{- /* Exige des sélecteurs DNS précis pour les règles de sortie. */ -}}
 {{- if or (not .Values.networkPolicy.dns.namespace) (not .Values.networkPolicy.dns.podLabels) -}}
 {{- fail "Renseigner le namespace et les labels des pods DNS" -}}
 {{- end -}}
-{{- /* Exige le tag de la version effectivement publiée par le pipeline. */ -}}
 {{- if not .Values.global.imageTag -}}
 {{- fail "Renseigner global.imageTag avec la VERSION publiée par GitLab" -}}
+{{- end -}}
+{{- if and .Values.pdfparse.enabled .Values.pdfparse.s3Sync.prefix -}}
+{{- if not (regexMatch "^s3://[^/]+(/.*)?$" .Values.pdfparse.s3Sync.prefix) -}}
+{{- fail "pdfparse.s3Sync.prefix doit avoir la forme s3://bucket/prefixe" -}}
+{{- end -}}
+{{- if not .Values.networkPolicy.extraEgress.pdfparse -}}
+{{- fail "Autoriser l’endpoint S3 dans networkPolicy.extraEgress.pdfparse pour activer la synchronisation" -}}
+{{- end -}}
 {{- end -}}

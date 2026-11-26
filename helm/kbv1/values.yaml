@@ -169,6 +169,14 @@ fileserver:
 pdfparse:
   # Active le rendu de la fonctionnalité ou du composant.
   enabled: true
+  s3Sync:
+    # Préfixe commun. Une valeur vide désactive la copie au démarrage.
+    prefix: ""
+    # Changer cette valeur pour resynchroniser un préfixe déjà copié.
+    revision: ""
+    # Vide utilise <global.imageRegistry>/aws-cli:2.
+    image: ""
+    existingSecret: km-s3-secrets
   # Paramètres de l’image du composant.
   image:
     # Nom de l’image dans le registre, avec le préfixe km-.
@@ -430,7 +438,7 @@ webui:
 # Secrets Kubernetes existants dans le namespace de la release.
 secrets:
   # Nom du Secret runtime qui fournit les mots de passe et les jetons.
-  existingSecret: kbv1-runtime
+  existingSecret: km-runtime-secrets
 
 # Publication HTTPS et configuration des noms publics.
 ingress:

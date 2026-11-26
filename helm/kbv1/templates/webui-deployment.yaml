@@ -1,223 +1,128 @@
-{{- /* Rend cette ressource uniquement si la fonctionnalité est activée. */ -}}
 {{- if .Values.webui.enabled }}
 {{- $webuiHost := include "kbv1.host" (dict "root" . "name" "webui") -}}
 {{- $fileserverHost := include "kbv1.host" (dict "root" . "name" "fileserver") -}}
-# Version de l’API utilisée pour cette ressource.
 apiVersion: apps/v1
-# Type de ressource que Kubernetes doit créer.
 kind: Deployment
-# Identité et étiquettes de la ressource.
 metadata:
-  # Nom de la ressource dans le namespace de la release.
   name: {{ include "kbv1.fullname" . }}-webui
-  # Étiquettes Helm et identité de la release.
   labels:
     {{- include "kbv1.labels" . | nindent 4 }}
-    # Étiquette qui distingue ce composant des autres pods de la release.
     app.kubernetes.io/component: webui
-# Configuration souhaitée pour cette ressource.
 spec:
-  # Nombre de pods maintenus par le Deployment.
   replicas: 1
-  # Étiquettes des pods que cette ressource sélectionne.
   selector:
-    # Toutes ces étiquettes doivent correspondre au pod ciblé.
     matchLabels:
       {{- include "kbv1.selectorLabels" . | nindent 6 }}
-      # Étiquette qui distingue ce composant des autres pods de la release.
       app.kubernetes.io/component: webui
-  # Modèle de pod appliqué à chaque réplique.
   template:
-    # Identité et étiquettes de la ressource.
     metadata:
-      # Étiquettes Helm et identité de la release.
       labels:
         {{- include "kbv1.selectorLabels" . | nindent 8 }}
-        # Étiquette qui distingue ce composant des autres pods de la release.
         app.kubernetes.io/component: webui
-    # Configuration souhaitée pour cette ressource.
     spec:
       # Empêche le montage automatique d’un jeton d’accès à l’API Kubernetes.
       automountServiceAccountToken: false
-      {{- /* Ajoute les Secrets de lecture du registre uniquement lorsqu’ils sont fournis. */ -}}
       {{- with .Values.global.imagePullSecrets }}
-      # Secrets Docker utilisés par le kubelet pour accéder au registre privé.
       imagePullSecrets:
         {{- toYaml . | nindent 8 }}
       {{- end }}
-      # Conteneurs applicatifs du pod.
       containers:
-        # Nom du conteneur dans le pod.
         - name: webui
-          # Référence de l’image publiée par GitLab, avec le registre et le tag de la release.
           image: {{ include "kbv1.image" (dict "root" . "image" .Values.webui.image) | quote }}
-          # Détermine quand le kubelet télécharge de nouveau l’image.
           imagePullPolicy: {{ .Values.webui.image.pullPolicy }}
-          # Ports utilisés par cette ressource.
           ports:
-            # Nom du port de conteneur, réutilisable par les sondes et le Service.
             - name: http
-              # Port d’écoute déclaré par le conteneur.
               containerPort: 4173
-              # Protocole de transport du port.
               protocol: TCP
-          # Variables injectées dans le conteneur au démarrage.
           env:
-            # Mode d’exécution applicatif. Le Fileserver et la console KM utilisent dev lorsque l’explorateur est publié.
             - name: KB_ENV
               value: {{ .Values.global.environment | quote }}
-            # Mode d’exécution Node.js.
             - name: NODE_ENV
               value: {{ .Values.webui.env.nodeEnv | default "production" | quote }}
-            # Port d’écoute du serveur WebUI.
             - name: PORT
               value: "4173"
-            # Interface d’écoute du serveur WebUI dans le pod.
             - name: HOSTNAME
               value: "0.0.0.0"
-            # Endpoint de l’agent conversationnel, lorsqu’il est configuré.
             - name: WEBUI_AGENT_URL
               value: {{ .Values.webui.env.agentUrl | quote }}
-            # Endpoint interne de KM API utilisé par la recherche WebUI.
             - name: WEBUI_KM_API_URL
               value: {{ printf "http://%s-km-api:%v" (include "kbv1.fullname" .) .Values.kmApi.service.port | quote }}
-            # Endpoint facultatif de reclassement des résultats.
             - name: WEBUI_RERANKER_URL
               value: {{ .Values.webui.env.rerankerUrl | quote }}
-            # Durée maximale configurée pour les opérations de chat.
             - name: WEBUI_CHAT_SECONDS
               value: {{ .Values.webui.env.chatSeconds | quote }}
-            # Sélectionne le mode de recherche par défaut.
             - name: WEBUI_SEARCH_MODE
               value: {{ .Values.webui.env.searchMode | quote }}
-            # Nom DNS interne du Service PostgreSQL.
             - name: WEBUI_DB_HOST
               value: {{ printf "%s-postgres" (include "kbv1.fullname" .) | quote }}
-            # Port interne du Service PostgreSQL.
             - name: WEBUI_DB_PORT
               value: {{ .Values.postgres.service.port | quote }}
-            # Nom de la base contenant les données WebUI.
             - name: WEBUI_DB_NAME
               value: {{ .Values.postgres.env.db | quote }}
-            # Compte PostgreSQL utilisé par WebUI pour les conversations.
             - name: WEBUI_DB_USER
               value: "webui-user"
-            # Injecte WEBUI_DB_PASSWORD depuis le Secret runtime.
             - name: WEBUI_DB_PASSWORD
-              # Source de cette variable, résolue par Kubernetes.
               valueFrom:
-                # Lit la valeur dans un Secret du namespace.
                 secretKeyRef:
-                  # Nom du Secret runtime partagé par les composants.
                   name: {{ include "kbv1.secretName" . }}
-                  # Clé du Secret injectée dans cette variable.
                   key: POSTGRES_WEBUI_PASSWORD
-            {{- /* Choisit par défaut les identifiants d’administration locale. */ -}}
             {{- $authKeys := list "WEBUI_AUTH_ADMIN_LOGIN" "WEBUI_AUTH_ADMIN_PASSWORD" }}
             {{- if eq .Values.webui.env.authMode "oidc" }}
-            {{- /* Sélectionne les paramètres du fournisseur OIDC à la place du compte local. */ -}}
             {{- $authKeys = list "WEBUI_AUTH_OIDC_ISSUER" "WEBUI_AUTH_OIDC_ID" "WEBUI_AUTH_OIDC_SECRET" }}
             {{- end }}
-            {{- /* Injecte uniquement les clés du mode d’authentification configuré. */ -}}
             {{- range $key := $authKeys }}
-            # Variable du mode d’authentification WebUI injectée depuis le Secret.
             - name: {{ $key }}
-              # Source de cette variable, résolue par Kubernetes.
               valueFrom:
-                # Lit la valeur dans un Secret du namespace.
                 secretKeyRef:
-                  # Nom du Secret runtime partagé par les composants.
                   name: {{ include "kbv1.secretName" $ }}
-                  # Clé du Secret injectée dans cette variable.
                   key: {{ $key }}
             {{- end }}
-            # URL HTTPS publique utilisée pendant le flux de connexion.
             - name: WEBUI_AUTH_URL
               value: {{ .Values.webui.env.authUrl | default (printf "https://%s" $webuiHost) | quote }}
-            # Autorise le fournisseur de session à faire confiance à l’hôte configuré.
             - name: WEBUI_AUTH_TRUST_HOST
               value: {{ .Values.webui.env.authTrustHost | quote }}
-            # Configure la confiance de WebUI envers son proxy.
             - name: WEBUI_TRUST_PROXY
               value: {{ .Values.webui.env.trustProxy | quote }}
-            # Endpoint interne utilisé par WebUI pour vérifier le Fileserver.
             - name: FILESERVER_INTERNAL_URL
               value: {{ printf "http://%s-fileserver:%v" (include "kbv1.fullname" .) .Values.fileserver.service.port | quote }}
-            # URL HTTPS que le navigateur utilise pour charger les PDF.
             - name: FILESERVER_PUBLIC_URL
               value: {{ .Values.webui.env.fileserverPublicUrl | default (printf "https://%s" $fileserverHost) | quote }}
-            # Injecte WEBUI_AUTH_SECRET depuis le Secret runtime.
             - name: WEBUI_AUTH_SECRET
-              # Source de cette variable, résolue par Kubernetes.
               valueFrom:
-                # Lit la valeur dans un Secret du namespace.
                 secretKeyRef:
-                  # Nom du Secret runtime partagé par les composants.
                   name: {{ include "kbv1.secretName" . }}
-                  # Clé du Secret injectée dans cette variable.
                   key: WEBUI_AUTH_SECRET
-            # Injecte FILESERVER_JWT_SECRET depuis le Secret runtime.
             - name: FILESERVER_JWT_SECRET
-              # Source de cette variable, résolue par Kubernetes.
               valueFrom:
-                # Lit la valeur dans un Secret du namespace.
                 secretKeyRef:
-                  # Nom du Secret runtime partagé par les composants.
                   name: {{ include "kbv1.secretName" . }}
-                  # Clé du Secret injectée dans cette variable.
                   key: FILESERVER_JWT_SECRET
-            # Injecte KM_API_TOKEN depuis le Secret runtime.
             - name: KM_API_TOKEN
-              # Source de cette variable, résolue par Kubernetes.
               valueFrom:
-                # Lit la valeur dans un Secret du namespace.
                 secretKeyRef:
-                  # Nom du Secret runtime partagé par les composants.
                   name: {{ include "kbv1.secretName" . }}
-                  # Clé du Secret injectée dans cette variable.
                   key: KM_API_TOKEN
-            {{- /* Injecte le jeton Agent uniquement si l’URL du service est configurée. */ -}}
             {{- if .Values.webui.env.agentUrl }}
-            # Injecte KM_AGENT_SERVICE_TOKEN depuis le Secret runtime.
             - name: KM_AGENT_SERVICE_TOKEN
-              # Source de cette variable, résolue par Kubernetes.
               valueFrom:
-                # Lit la valeur dans un Secret du namespace.
                 secretKeyRef:
-                  # Nom du Secret runtime partagé par les composants.
                   name: {{ include "kbv1.secretName" . }}
-                  # Clé du Secret injectée dans cette variable.
                   key: KM_AGENT_TOKEN
             {{- end }}
-          # Redémarre le conteneur après des échecs répétés.
           livenessProbe:
-            # Vérifie la réponse HTTP de l’application.
             httpGet:
-              # Endpoint de santé contrôlé par la sonde HTTP.
               path: /health
-              # Port du conteneur interrogé par la sonde.
               port: 4173
-            # Délai avant le début des vérifications, en secondes.
             initialDelaySeconds: 20
-            # Intervalle entre deux vérifications, en secondes.
             periodSeconds: 20
-            # Délai maximal d’une vérification, en secondes.
             timeoutSeconds: 8
-          # Retire le pod des endpoints du Service tant que le contrôle échoue.
           readinessProbe:
-            # Vérifie la réponse HTTP de l’application.
             httpGet:
-              # Endpoint de santé contrôlé par la sonde HTTP.
               path: /ready
-              # Port du conteneur interrogé par la sonde.
               port: 4173
-            # Délai avant le début des vérifications, en secondes.
             initialDelaySeconds: 10
-            # Intervalle entre deux vérifications, en secondes.
             periodSeconds: 10
-            # Délai maximal d’une vérification, en secondes.
             timeoutSeconds: 5
-          # Demandes et limites de ressources Kubernetes.
           resources:
             {{- toYaml .Values.webui.resources | nindent 12 }}
 {{- end }}

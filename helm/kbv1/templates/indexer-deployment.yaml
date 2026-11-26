@@ -1,84 +1,48 @@
-{{- /* Rend cette ressource uniquement si la fonctionnalité est activée. */ -}}
 {{- if .Values.indexer.enabled }}
-# Version de l’API utilisée pour cette ressource.
 apiVersion: apps/v1
-# Type de ressource que Kubernetes doit créer.
 kind: Deployment
-# Identité et étiquettes de la ressource.
 metadata:
-  # Nom de la ressource dans le namespace de la release.
   name: {{ include "kbv1.fullname" . }}-indexer
-  # Étiquettes Helm et identité de la release.
   labels:
     {{- include "kbv1.labels" . | nindent 4 }}
-    # Étiquette qui distingue ce composant des autres pods de la release.
     app.kubernetes.io/component: indexer
-# Configuration souhaitée pour cette ressource.
 spec:
-  # Nombre de pods maintenus par le Deployment.
   replicas: 1
-  # Étiquettes des pods que cette ressource sélectionne.
   selector:
-    # Toutes ces étiquettes doivent correspondre au pod ciblé.
     matchLabels:
       {{- include "kbv1.selectorLabels" . | nindent 6 }}
-      # Étiquette qui distingue ce composant des autres pods de la release.
       app.kubernetes.io/component: indexer
-  # Modèle de pod appliqué à chaque réplique.
   template:
-    # Identité et étiquettes de la ressource.
     metadata:
-      # Étiquettes Helm et identité de la release.
       labels:
         {{- include "kbv1.selectorLabels" . | nindent 8 }}
-        # Étiquette qui distingue ce composant des autres pods de la release.
         app.kubernetes.io/component: indexer
-    # Configuration souhaitée pour cette ressource.
     spec:
       # Empêche le montage automatique d’un jeton d’accès à l’API Kubernetes.
       automountServiceAccountToken: false
-      {{- /* Ajoute les Secrets de lecture du registre uniquement lorsqu’ils sont fournis. */ -}}
       {{- with .Values.global.imagePullSecrets }}
-      # Secrets Docker utilisés par le kubelet pour accéder au registre privé.
       imagePullSecrets:
         {{- toYaml . | nindent 8 }}
       {{- end }}
-      # Préparent les volumes avant le lancement du conteneur principal.
       initContainers:
-        # Nom du conteneur dans le pod.
         - name: state-init
-          # Référence de l’image publiée par GitLab, avec le registre et le tag de la release.
           image: {{ include "kbv1.image" (dict "root" . "image" .Values.indexer.image) | quote }}
-          # Détermine quand le kubelet télécharge de nouveau l’image.
           imagePullPolicy: {{ .Values.indexer.image.pullPolicy }}
-          # Identités et permissions Linux appliquées au processus ou au pod.
           securityContext:
-            # UID sous lequel Kubernetes lance ce conteneur.
             runAsUser: 0
-          # Commande lancée dans le conteneur pour ce bloc.
           command:
             - sh
             - -ec
             - chown -hR 1000:10001 /state
-          # Points de montage visibles dans le conteneur.
           volumeMounts:
-            # Nom du volume à monter, défini dans la liste des volumes du pod.
             - name: indexer-state
-              # Emplacement du volume dans le conteneur.
               mountPath: /state
-      # Identités et permissions Linux appliquées au processus ou au pod.
       securityContext:
-        # Groupe Linux utilisé pour les fichiers du volume partagé.
         fsGroup: 10001
-      # Conteneurs applicatifs du pod.
       containers:
-        # Nom du conteneur dans le pod.
         - name: indexer
-          # Référence de l’image publiée par GitLab, avec le registre et le tag de la release.
           image: {{ include "kbv1.image" (dict "root" . "image" .Values.indexer.image) | quote }}
-          # Détermine quand le kubelet télécharge de nouveau l’image.
           imagePullPolicy: {{ .Values.indexer.image.pullPolicy }}
-          # Commande lancée dans le conteneur pour ce bloc.
           command:
             - python
             - -m
@@ -91,156 +55,91 @@ spec:
             - --workers
             - "1"
             - --no-proxy-headers
-          # Ports utilisés par cette ressource.
           ports:
-            # Nom du port de conteneur, réutilisable par les sondes et le Service.
             - name: http
-              # Port d’écoute déclaré par le conteneur.
               containerPort: 8011
-              # Protocole de transport du port.
               protocol: TCP
-          # Variables injectées dans le conteneur au démarrage.
           env:
-            # Injecte KM_API_TOKEN depuis le Secret runtime.
             - name: KM_API_TOKEN
-              # Source de cette variable, résolue par Kubernetes.
               valueFrom:
-                # Lit la valeur dans un Secret du namespace.
                 secretKeyRef:
-                  # Nom du Secret runtime partagé par les composants.
                   name: {{ include "kbv1.secretName" . }}
-                  # Clé du Secret injectée dans cette variable.
                   key: KM_API_TOKEN
-            # Injecte KM_INDEXER_ADMIN_TOKEN depuis le Secret runtime.
             - name: KM_INDEXER_ADMIN_TOKEN
-              # Source de cette variable, résolue par Kubernetes.
               valueFrom:
-                # Lit la valeur dans un Secret du namespace.
                 secretKeyRef:
-                  # Nom du Secret runtime partagé par les composants.
                   name: {{ include "kbv1.secretName" . }}
-                  # Clé du Secret injectée dans cette variable.
                   key: KM_INDEXER_ADMIN_TOKEN
-            # Injecte KM_ENCODER_TOKEN depuis le Secret runtime.
             - name: KM_ENCODER_TOKEN
-              # Source de cette variable, résolue par Kubernetes.
               valueFrom:
-                # Lit la valeur dans un Secret du namespace.
                 secretKeyRef:
-                  # Nom du Secret runtime partagé par les composants.
                   name: {{ include "kbv1.secretName" . }}
-                  # Clé du Secret injectée dans cette variable.
                   key: KM_ENCODER_TOKEN
-            # Mode d’exécution applicatif. Le Fileserver et la console KM utilisent dev lorsque l’explorateur est publié.
             - name: KB_ENV
               value: {{ .Values.global.environment | quote }}
-            # Endpoint interne de l’encodeur E5 qui calcule les embeddings.
             - name: ENCODER_URL
               value: {{ printf "http://%s-encoder:%v" (include "kbv1.fullname" .) .Values.encoder.service.port | quote }}
-            # Racine du corpus pour l’indexeur.
             - name: KB_DATA_DIR
               value: {{ .Values.indexer.env.dataDir | quote }}
-            # Racine utilisée pour résoudre les chemins reçus en entrée.
             - name: KB_UPSTREAM_ROOT
               value: {{ .Values.indexer.env.upstreamRoot | quote }}
-            # Répertoire des versions de documents archivées.
             - name: SOURCE_VERSIONS_DIR
               value: {{ .Values.indexer.env.sourceVersionsDir | quote }}
-            # Endpoint interne de KM API où l’indexeur archive les versions PDF.
             - name: KM_SOURCE_ARCHIVE_URL
               value: {{ printf "http://%s-km-api:%v/internal/source-versions" (include "kbv1.fullname" .) .Values.kmApi.service.port | quote }}
-            # Répertoire persistant ou temporaire dédié à l’état de l’indexeur.
             - name: KM_STATE_DIR
               value: {{ .Values.indexer.env.stateDir | quote }}
-            # Active l’utilisation du schéma KM.
             - name: KB_KM_SCHEMA
               value: {{ .Values.indexer.env.kmSchema | quote }}
-            # URL PostgreSQL interne, avec le compte SQL adapté au service.
             - name: KB_DATABASE_URL
               value: {{ printf "postgresql://km_writer@%s-postgres:%v/%s" (include "kbv1.fullname" .) .Values.postgres.service.port .Values.postgres.env.db | quote }}
-            # Mot de passe injectable pour le compte SQL déclaré dans l’URL.
             - name: PGPASSWORD
-              # Source de cette variable, résolue par Kubernetes.
               valueFrom:
-                # Lit la valeur dans un Secret du namespace.
                 secretKeyRef:
-                  # Nom du Secret runtime partagé par les composants.
                   name: {{ include "kbv1.secretName" . }}
-                  # Clé du Secret injectée dans cette variable.
                   key: POSTGRES_KM_WRITER_PASSWORD
-            # Injecte KM_INDEXER_TOKEN depuis le Secret runtime.
             - name: KM_INDEXER_TOKEN
-              # Source de cette variable, résolue par Kubernetes.
               valueFrom:
-                # Lit la valeur dans un Secret du namespace.
                 secretKeyRef:
-                  # Nom du Secret runtime partagé par les composants.
                   name: {{ include "kbv1.secretName" . }}
-                  # Clé du Secret injectée dans cette variable.
                   key: KM_INDEXER_TOKEN
-          # Points de montage visibles dans le conteneur.
           volumeMounts:
-            # Nom du volume à monter, défini dans la liste des volumes du pod.
             - name: corpus-storage
-              # Emplacement du volume dans le conteneur.
               mountPath: {{ .Values.indexer.env.dataDir }}
-            # Nom du volume à monter, défini dans la liste des volumes du pod.
             - name: indexer-state
-              # Emplacement du volume dans le conteneur.
               mountPath: {{ .Values.indexer.env.stateDir }}
-            # Nom du volume à monter, défini dans la liste des volumes du pod.
             - name: source-versions
-              # Emplacement du volume dans le conteneur.
               mountPath: {{ .Values.indexer.env.sourceVersionsDir }}
-              # Interdit les écritures dans ce montage.
               readOnly: true
-          # Demandes et limites de ressources Kubernetes.
           resources:
             {{- toYaml .Values.indexer.resources | nindent 12 }}
-      # Sources des volumes utilisés par le pod.
       volumes:
-        # Nom du volume dans le pod.
         - name: corpus-storage
-          {{- /* Utilise le stockage persistant lorsque le mode PVC est sélectionné. */ -}}
           {{- if eq .Values.sharedStorage.corpus.type "pvc" }}
-          # Monte le volume persistant déclaré par un PVC.
           persistentVolumeClaim:
             # Sélectionne le PVC fourni ou le nom généré par la release.
             claimName: {{ if .Values.sharedStorage.corpus.pvcName }}{{ .Values.sharedStorage.corpus.pvcName }}{{ else }}{{ include "kbv1.fullname" . }}-corpus{{ end }}
-          {{- /* Utilise le chemin local du nœud lorsque le mode hostPath est sélectionné. */ -}}
           {{- else if eq .Values.sharedStorage.corpus.type "hostPath" }}
-          # Utilise un chemin local du nœud qui héberge le pod.
           hostPath:
-            # Chemin utilisé par cette ressource.
             path: {{ .Values.sharedStorage.corpus.hostPath }}
-            # Exige un répertoire existant sur le nœud.
             type: Directory
           {{- else }}
-          # Crée un volume temporaire supprimé avec le pod.
           emptyDir: {}
           {{- end }}
-        # Nom du volume dans le pod.
         - name: indexer-state
-          {{- /* Utilise le stockage persistant lorsque le mode PVC est sélectionné. */ -}}
           {{- if eq .Values.sharedStorage.indexerState.type "pvc" }}
-          # Monte le volume persistant déclaré par un PVC.
           persistentVolumeClaim:
             # Sélectionne le PVC fourni ou le nom généré par la release.
             claimName: {{ if .Values.sharedStorage.indexerState.pvcName }}{{ .Values.sharedStorage.indexerState.pvcName }}{{ else }}{{ include "kbv1.fullname" . }}-indexer-state{{ end }}
           {{- else }}
-          # Crée un volume temporaire supprimé avec le pod.
           emptyDir: {}
           {{- end }}
-        # Nom du volume dans le pod.
         - name: source-versions
-          {{- /* Utilise le stockage persistant lorsque le mode PVC est sélectionné. */ -}}
           {{- if eq .Values.sharedStorage.sourceVersions.type "pvc" }}
-          # Monte le volume persistant déclaré par un PVC.
           persistentVolumeClaim:
             # Sélectionne le PVC fourni ou le nom généré par la release.
             claimName: {{ if .Values.sharedStorage.sourceVersions.pvcName }}{{ .Values.sharedStorage.sourceVersions.pvcName }}{{ else }}{{ include "kbv1.fullname" . }}-source-versions{{ end }}
           {{- else }}
-          # Crée un volume temporaire supprimé avec le pod.
           emptyDir: {}
           {{- end }}
 {{- end }}

@@ -87,6 +87,7 @@ services:
         PDFPARSE_WHEEL_PROFILE: ${PDFPARSE_WHEEL_PROFILE:-pdfparse}
     environment:
       KB_ENV: dev
+      KM_SKIP_MOUNTSYNC: "1"
       ALLOWED_HOSTS: localhost,127.0.0.1,fileserver
       MODELS_DIR: /models
       PDFPARSE_ADMIN_USER: ${PDFPARSE_ADMIN_USER:-studio}
@@ -101,7 +102,7 @@ services:
       - pdfparse-assets:/assets
       - &models
         type: bind
-        source: ${MODELS_DIR:-./models}
+        source: ${MODELS_DIR:-/mnt/e/models}
         target: /models
         read_only: true
         bind:

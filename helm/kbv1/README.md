@@ -1,9 +1,28 @@
 # Déployer KBv1 avec Helm
 
+## PdfParse seul
+
+Le fichier `helm/kbv1/value-pdfparse.yaml` déploie uniquement PdfParse. Le Studio et son API sont accessibles sur `https://km-<nom-add>-01.<domain_name>` avec le Basic Auth de PdfParse. Remplacer `nom-add` par le nom ADD en minuscules, avec des tirets pour séparer les mots.
+
+Dans le namespace de la release, préparer `km-runtime-secrets` avec la clé `PDFPARSE_ADMIN_PASSWORD` (au moins 16 caractères) et `km-pull-secrets` avec les identifiants de lecture du registre. Le nom d’utilisateur du Studio est `studio` par défaut. Renseigner l’Issuer dans les annotations de l’Ingress. Cert-manager génère et renouvelle `km-tls-secret`. Les commandes de gestion sont commentées dans le profil.
+
+Le pod monte le PVC existant `km-data` sur `/data` et le PVC `km-models` sur `/models` en lecture seule. Pour synchroniser les deux volumes au démarrage, renseigner `pdfparse.s3Sync.prefix` et autoriser l’accès réseau à S3. Le conteneur d’initialisation doit pouvoir écrire sur les deux PVC. [Configuration de la synchronisation S3](../../README.md#synchronisation-s3-au-démarrage-de-pdfparse)
+
+```sh
+helm lint --strict helm/kbv1 -f helm/kbv1/value-pdfparse.yaml
+IMAGE_TAG=$(git rev-parse HEAD)
+helm upgrade --install kbv1 helm/kbv1 --namespace namespace \
+  -f helm/kbv1/value-pdfparse.yaml --set-string "global.imageTag=$IMAGE_TAG"
+```
+
+La commande manuelle suppose que l’image du commit courant a déjà été publiée. Dans GitLab, utiliser le contenu de `helm/kbv1/value-pdfparse.yaml` pour la variable de type fichier `KUBE_PREPROD_VALUES`. La CI fournit le préfixe de registre et le tag de l’image.
+
+## Stack complète
+
 Copier `values-site.example.yaml` en `values-site.yaml` et adapter les valeurs au cluster.
 
 - `global.imageRegistry` correspond à `REGISTRY_PATH` dans GitLab, par exemple `registry.example.test/team/kbv1`.
-- `global.imageTag` correspond à `VERSION` dans GitLab. La version par défaut est `1.0.0`.
+- `global.imageTag` correspond à `VERSION` dans GitLab, par défaut le SHA du commit. Pour un déploiement manuel, indiquer le tag effectivement publié.
 - `global.imagePullSecrets` référence le Secret Docker du namespace lorsque le registry est privé.
 - `domain_name` et `ingress.subdomains` définissent les quatre noms DNS. Le Secret TLS `ingress.tlsSecretName` doit contenir un certificat couvrant les noms exposés.
 - Prévoir au moins `128Gi` pour le corpus et `64Gi` pour les modèles. Avec un `pvcName` renseigné, Helm monte le PVC existant et sa capacité se gère séparément. Pour que Helm crée un PVC, laisser `pvcName: ""` et indiquer si nécessaire une `storageClassName` compatible `ReadWriteMany`. Les modèles doivent être préchargés. Le volume partagé des versions de documents doit aussi accepter `ReadWriteMany`.

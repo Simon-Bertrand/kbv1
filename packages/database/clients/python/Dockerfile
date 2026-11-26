@@ -1,5 +1,5 @@
 ARG BUILD_IMAGE_PREFIX=knowledgebase
-FROM ${BUILD_IMAGE_PREFIX}/base-python:local
+FROM ${BUILD_IMAGE_PREFIX}/base-python:latest
 ENV PATH=/opt/venv/bin:$PATH PYTHONDONTWRITEBYTECODE=1 PYTHONUNBUFFERED=1 PIP_NO_INDEX=1
 WORKDIR /build
 COPY --from=workspace pyproject.toml uv.lock ./

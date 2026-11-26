@@ -15,22 +15,27 @@ PREPARATION_DOCKERFILE = ROOT / 'docker/dependencies/Dockerfile'
 PREPARED_TARGETS = ('frontend', 'webui-runtime', 'webui', 'km-frontend',
                     'fileserver-base', 'fileserver-build', 'python-runtime',
                     'python-pdf-runtime', 'wheelhouse-preparer')
+PREPARATION_IMAGES = {
+    'knowledgebase/upstream-node:latest': 'node:22-bookworm-slim',
+    'knowledgebase/upstream-python:latest': 'python:3.12.13-slim-bookworm',
+    'knowledgebase/upstream-alpine:latest': 'alpine:3.24',
+}
 UPSTREAM = {
     'postgres': 'postgres:17',
     'pgvector': 'ghcr.io/pglayers/pgx-pgvector:17',
     'pgvectorscale': 'ghcr.io/pglayers/pgx-pgvectorscale:17',
     'pg-textsearch': 'ghcr.io/pglayers/pgx-pg_textsearch:17',
 }
-TAGS = {target: f'knowledgebase/build-{target}:local' for target in PREPARED_TARGETS}
-TAGS['wheelhouse-preparer'] = 'knowledgebase/wheelhouse-preparer:local'
-TAGS['webui-runtime'] = 'knowledgebase/base-webui:local'
-TAGS['fileserver-base'] = 'knowledgebase/base-fileserver:local'
-TAGS['fileserver-build'] = 'knowledgebase/build-fileserver:local'
+TAGS = {target: f'knowledgebase/build-{target}:latest' for target in PREPARED_TARGETS}
+TAGS['wheelhouse-preparer'] = 'knowledgebase/wheelhouse-preparer:latest'
+TAGS['webui-runtime'] = 'knowledgebase/base-webui:latest'
+TAGS['fileserver-base'] = 'knowledgebase/base-fileserver:latest'
+TAGS['fileserver-build'] = 'knowledgebase/build-fileserver:latest'
 TAGS.update({
-    'python-runtime': 'knowledgebase/base-python:local',
-    'python-pdf-runtime': 'knowledgebase/base-python-pdf:local',
+    'python-runtime': 'knowledgebase/base-python:latest',
+    'python-pdf-runtime': 'knowledgebase/base-python-pdf:latest',
 })
-TAGS.update({key: f'knowledgebase/base-{key}:local' for key in UPSTREAM})
+TAGS.update({key: f'knowledgebase/base-{key}:latest' for key in UPSTREAM})
 
 
 def run(args, capture=False):
@@ -40,6 +45,9 @@ def run(args, capture=False):
 
 def prepare_bases(directory=None):
     builder = local_builder(run)
+    for tag, source in PREPARATION_IMAGES.items():
+        run(['docker', 'pull', source])
+        run(['docker', 'tag', source, tag])
     for target in PREPARED_TARGETS:
         run([*builder, '-f', str(PREPARATION_DOCKERFILE),
              '--target', target, '-t', TAGS[target], '.'])
@@ -102,19 +110,21 @@ def load(directory):
     manifest = json.loads((directory / 'manifest.json').read_text())
     if manifest.get('kind') != 'build-dependencies' or manifest.get('version') != 1:
         raise SystemExit('Unsupported build bundle.')
-    images = {i['image'] for i in manifest['images']}
-    expected = set(published_tags())
-    if not expected <= images:
+    images = {item['image']: item for item in manifest['images']}
+    items = {tag: images.get(tag) or images.get(tag.removesuffix(':latest') + ':local')
+             for tag in published_tags()}
+    if None in items.values():
         raise SystemExit('Incomplete build bundle.')
-    items = [item for item in manifest['images'] if item['image'] in expected]
-    for item in items:
+    for item in items.values():
         archive = directory / item['archive']
         if Path(item['archive']).name != item['archive'] or sha256(archive) != item['sha256']:
             raise SystemExit(f'Invalid archive: {archive}')
-    for item in items:
+    for tag, item in items.items():
         run(['docker', 'load', '-i', str(directory / item['archive'])])
         info = json.loads(run(['docker', 'image', 'inspect', item['image']], True))[0]
         verify_loaded_image(directory / item['archive'], item['image'], info)
+        if tag != item['image']:
+            run(['docker', 'tag', item['image'], tag])
 
 
 def publish(directory, registry):
@@ -124,12 +134,22 @@ def publish(directory, registry):
         target = f'{registry}/{repository}:latest'
         run(['docker', 'tag', image, target])
         run(['docker', 'push', target])
-    for repository, source in (('ci-buildah', 'quay.io/buildah/stable'),
-                               ('ci-helm', 'alpine/helm:3.20.2')):
-        target = f'{registry}/{repository}:latest'
-        run(['docker', 'pull', source])
-        run(['docker', 'tag', source, target])
-        run(['docker', 'push', target])
+    builder = local_builder(run)
+    helm_source = 'alpine/helm:3.20.2'
+    run(['docker', 'pull', helm_source])
+    run(['docker', 'tag', helm_source, 'knowledgebase/ci-helm-source:latest'])
+    run(['docker', 'pull', 'quay.io/buildah/stable:latest'])
+    target = f'{registry}/ci-buildah-helm:latest'
+    run([*builder, '-t', target, 'docker/ci'])
+    run(['docker', 'push', target])
+    aws_source = 'public.ecr.aws/aws-cli/aws-cli:2.42.1'
+    aws_target = f'{registry}/aws-cli:2'
+    run(['docker', 'pull', aws_source])
+    run(['docker', 'run', '--rm', '--pull=never', '--network=none',
+         '--user', '1000:1000', '--entrypoint', '/bin/sh', aws_source, '-ec',
+         'command -v mktemp && command -v mv && command -v rm && aws --version'])
+    run(['docker', 'tag', aws_source, aws_target])
+    run(['docker', 'push', aws_target])
 
 
 def main():

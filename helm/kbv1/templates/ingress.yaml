@@ -1,7 +1,5 @@
-{{- /* Rend cette ressource uniquement si la fonctionnalité est activée. */ -}}
 {{- if .Values.ingress.enabled }}
 {{- $root := . }}
-{{- /* Déclare les routes publiques et leurs backends, y compris l’accès PDF séparé. */ -}}
 {{- $routes := list
   (dict "key" "webui" "component" "webui" "enabled" .Values.webui.enabled "port" .Values.webui.service.port "path" "/")
   (dict "key" "kmFrontend" "component" "km-frontend" "enabled" .Values.kmFrontend.enabled "port" .Values.kmFrontend.service.port "path" "/")
@@ -9,13 +7,11 @@
   (dict "key" "fileserver" "component" "fileserver" "enabled" (and .Values.fileserver.enabled .Values.ingress.fileserverExposed) "port" .Values.fileserver.service.port "path" "/files")
 }}
 {{- if and .Values.fileserver.enabled .Values.ingress.fileserverExposed .Values.ingress.fileserverUi.enabled }}
-{{- /* Ajoute la route de l’explorateur Fileserver derrière Basic Auth. */ -}}
 {{- $routes = append $routes (dict "key" "fileserver" "component" "fileserver-ui" "enabled" true "port" .Values.fileserver.service.port "path" "/") }}
 {{- end }}
 {{- range $route := $routes }}
 {{- if $route.enabled }}
 {{- $host := include "kbv1.host" (dict "root" $root "name" $route.key) }}
-{{- /* Combine les paramètres du proxy avec la redirection obligatoire vers HTTPS. */ -}}
 {{- $annotations := mergeOverwrite (deepCopy $root.Values.ingress.annotations) (dict
       "nginx.ingress.kubernetes.io/ssl-redirect" "true"
       "nginx.ingress.kubernetes.io/force-ssl-redirect" "true") }}
@@ -23,58 +19,35 @@
 {{- if eq $route.component "fileserver" }}
 {{- $_ := set $annotations "nginx.ingress.kubernetes.io/enable-access-log" "false" }}
 {{- end }}
-{{- /* Applique le garde Basic Auth uniquement à la route de l’explorateur. */ -}}
 {{- if eq $route.component "fileserver-ui" }}
 {{- $_ := set $annotations "nginx.ingress.kubernetes.io/auth-type" "basic" }}
 {{- $_ := set $annotations "nginx.ingress.kubernetes.io/auth-secret" (required "Renseigner ingress.fileserverUi.authSecretName" $root.Values.ingress.fileserverUi.authSecretName) }}
 {{- $_ := set $annotations "nginx.ingress.kubernetes.io/auth-realm" "Fileserver" }}
 {{- end }}
 ---
-# Version de l’API utilisée pour cette ressource.
 apiVersion: networking.k8s.io/v1
-# Type de ressource que Kubernetes doit créer.
 kind: Ingress
-# Identité et étiquettes de la ressource.
 metadata:
-  # Nom de la ressource dans le namespace de la release.
   name: {{ include "kbv1.fullname" $root }}-{{ $route.component }}
-  # Étiquettes Helm et identité de la release.
   labels:
     {{- include "kbv1.labels" $root | nindent 4 }}
-  # Paramètres appliqués par le contrôleur Ingress.
   annotations:
     {{- toYaml $annotations | nindent 4 }}
-# Configuration souhaitée pour cette ressource.
 spec:
-  # Classe qui désigne le contrôleur chargé de cette route.
   ingressClassName: {{ $root.Values.ingress.className | quote }}
-  # Associe les hôtes HTTPS à leur certificat.
   tls:
-    # Noms DNS couverts par l’entrée TLS.
     - hosts: [{{ $host | quote }}]
-      # Secret Kubernetes contenant le certificat TLS et sa clé.
       secretName: {{ required "Renseigner ingress.tlsSecretName" $root.Values.ingress.tlsSecretName | quote }}
-  # Routes choisies en fonction de l’hôte et du chemin HTTP.
   rules:
-    # Nom d’hôte qui doit correspondre à la requête.
     - host: {{ $host | quote }}
-      # Routage HTTP associé à cet hôte.
       http:
-        # Chemins pris en charge par cet Ingress.
         paths:
-          # Chemin utilisé par cette ressource.
           - path: {{ $route.path }}
-            # Applique la règle au préfixe de chemin indiqué.
             pathType: Prefix
-            # Destination de la requête une fois la route sélectionnée.
             backend:
-              # Service Kubernetes qui reçoit la requête.
               service:
-                # Nom de la ressource dans le namespace de la release.
                 name: {{ include "kbv1.fullname" $root }}-{{ ternary "fileserver" $route.component (eq $route.component "fileserver-ui") }}
-                # Port utilisé pour ce flux ou cette vérification.
                 port:
-                  # Port du Service destinataire.
                   number: {{ $route.port }}
 {{- end }}
 {{- end }}

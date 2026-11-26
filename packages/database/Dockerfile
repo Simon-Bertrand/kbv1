@@ -1,8 +1,8 @@
 ARG BUILD_IMAGE_PREFIX=knowledgebase
-FROM ${BUILD_IMAGE_PREFIX}/base-pg-textsearch:local AS base-pg-textsearch
-FROM ${BUILD_IMAGE_PREFIX}/base-pgvectorscale:local AS base-pgvectorscale
-FROM ${BUILD_IMAGE_PREFIX}/base-pgvector:local AS base-pgvector
-FROM ${BUILD_IMAGE_PREFIX}/base-postgres:local
+FROM ${BUILD_IMAGE_PREFIX}/base-pg-textsearch:latest AS base-pg-textsearch
+FROM ${BUILD_IMAGE_PREFIX}/base-pgvectorscale:latest AS base-pgvectorscale
+FROM ${BUILD_IMAGE_PREFIX}/base-pgvector:latest AS base-pgvector
+FROM ${BUILD_IMAGE_PREFIX}/base-postgres:latest
 
 # Extensions PostgreSQL
 COPY --from=base-pgvector / /

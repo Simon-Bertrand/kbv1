@@ -1,5 +1,5 @@
 # Online preparation only. Service Dockerfiles consume the exported local images.
-FROM node:22-bookworm-slim AS webui-runtime
+FROM knowledgebase/upstream-node:latest AS webui-runtime
 
 FROM webui-runtime AS webui
 WORKDIR /app
@@ -15,14 +15,14 @@ RUN --mount=type=cache,target=/root/.npm npm ci --no-audit --no-fund \
     && mkdir -p /opt/offline \
     && sha256sum package.json package-lock.json > /opt/offline/km-frontend.sha256
 
-FROM node:22-bookworm-slim AS frontend
+FROM knowledgebase/upstream-node:latest AS frontend
 WORKDIR /front
 COPY packages/pdfparse/src/pdfparse/front/package*.json ./
 RUN --mount=type=cache,target=/root/.npm npm ci \
     && mkdir -p /opt/offline \
     && sha256sum package.json package-lock.json > /opt/offline/frontend.sha256
 
-FROM python:3.12.13-slim-bookworm AS python-system
+FROM knowledgebase/upstream-python:latest AS python-system
 ENV PATH=/opt/venv/bin:$PATH
 RUN apt-get update && apt-get install -y --no-install-recommends libgomp1     && rm -rf /var/lib/apt/lists/*
 
@@ -44,7 +44,7 @@ COPY --from=ghcr.io/astral-sh/uv:0.11.8 /uv /usr/local/bin/uv
 ENV UV_CACHE_DIR=/tmp/uv-cache UV_PYTHON_DOWNLOADS=never
 COPY scripts/docker/wheelhouse.py /opt/wheelhouse.py
 
-FROM alpine:3.24 AS fileserver-base
+FROM knowledgebase/upstream-alpine:latest AS fileserver-base
 RUN apk add --no-cache nginx nginx-mod-http-js ca-certificates
 
 FROM fileserver-base AS fileserver-build

@@ -1,146 +1,81 @@
-{{- /* Rend cette ressource uniquement si la fonctionnalité est activée. */ -}}
 {{- if .Values.postgres.enabled }}
-# Version de l’API utilisée pour cette ressource.
 apiVersion: apps/v1
-# Type de ressource que Kubernetes doit créer.
 kind: Deployment
-# Identité et étiquettes de la ressource.
 metadata:
-  # Nom de la ressource dans le namespace de la release.
   name: {{ include "kbv1.fullname" . }}-postgres
-  # Étiquettes Helm et identité de la release.
   labels:
     {{- include "kbv1.labels" . | nindent 4 }}
-    # Étiquette qui distingue ce composant des autres pods de la release.
     app.kubernetes.io/component: postgres
-# Configuration souhaitée pour cette ressource.
 spec:
-  # Nombre de pods maintenus par le Deployment.
   replicas: 1
-  # Mode de remplacement des pods lors d’une mise à jour.
   strategy:
     # Arrête l’ancien PostgreSQL avant de démarrer le nouveau sur le même volume.
     type: Recreate
-  # Étiquettes des pods que cette ressource sélectionne.
   selector:
-    # Toutes ces étiquettes doivent correspondre au pod ciblé.
     matchLabels:
       {{- include "kbv1.selectorLabels" . | nindent 6 }}
-      # Étiquette qui distingue ce composant des autres pods de la release.
       app.kubernetes.io/component: postgres
-  # Modèle de pod appliqué à chaque réplique.
   template:
-    # Identité et étiquettes de la ressource.
     metadata:
-      # Étiquettes Helm et identité de la release.
       labels:
         {{- include "kbv1.selectorLabels" . | nindent 8 }}
-        # Étiquette qui distingue ce composant des autres pods de la release.
         app.kubernetes.io/component: postgres
-    # Configuration souhaitée pour cette ressource.
     spec:
       # Empêche le montage automatique d’un jeton d’accès à l’API Kubernetes.
       automountServiceAccountToken: false
-      {{- /* Ajoute les Secrets de lecture du registre uniquement lorsqu’ils sont fournis. */ -}}
       {{- with .Values.global.imagePullSecrets }}
-      # Secrets Docker utilisés par le kubelet pour accéder au registre privé.
       imagePullSecrets:
         {{- toYaml . | nindent 8 }}
       {{- end }}
-      # Conteneurs applicatifs du pod.
       containers:
-        # Nom du conteneur dans le pod.
         - name: postgres
-          # Référence de l’image publiée par GitLab, avec le registre et le tag de la release.
           image: {{ include "kbv1.image" (dict "root" . "image" .Values.postgres.image) | quote }}
-          # Détermine quand le kubelet télécharge de nouveau l’image.
           imagePullPolicy: {{ .Values.postgres.image.pullPolicy }}
-          # Ports utilisés par cette ressource.
           ports:
-            # Nom du port de conteneur, réutilisable par les sondes et le Service.
             - name: postgres
-              # Port d’écoute déclaré par le conteneur.
               containerPort: 5432
-              # Protocole de transport du port.
               protocol: TCP
-          # Variables injectées dans le conteneur au démarrage.
           env:
-            # Base PostgreSQL à initialiser.
             - name: POSTGRES_DB
               value: {{ .Values.postgres.env.db | quote }}
-            # Compte d’administration PostgreSQL à initialiser.
             - name: POSTGRES_USER
               value: {{ .Values.postgres.env.user | quote }}
-            # Injecte POSTGRES_PASSWORD depuis le Secret runtime.
             - name: POSTGRES_PASSWORD
-              # Source de cette variable, résolue par Kubernetes.
               valueFrom:
-                # Lit la valeur dans un Secret du namespace.
                 secretKeyRef:
-                  # Nom du Secret runtime partagé par les composants.
                   name: {{ include "kbv1.secretName" . }}
-                  # Clé du Secret injectée dans cette variable.
                   key: POSTGRES_PASSWORD
-            # Injecte POSTGRES_AGENT_PASSWORD depuis le Secret runtime.
             - name: POSTGRES_AGENT_PASSWORD
-              # Source de cette variable, résolue par Kubernetes.
               valueFrom:
-                # Lit la valeur dans un Secret du namespace.
                 secretKeyRef:
-                  # Nom du Secret runtime partagé par les composants.
                   name: {{ include "kbv1.secretName" . }}
-                  # Clé du Secret injectée dans cette variable.
                   key: POSTGRES_AGENT_PASSWORD
-            # Injecte POSTGRES_KM_READER_PASSWORD depuis le Secret runtime.
             - name: POSTGRES_KM_READER_PASSWORD
-              # Source de cette variable, résolue par Kubernetes.
               valueFrom:
-                # Lit la valeur dans un Secret du namespace.
                 secretKeyRef:
-                  # Nom du Secret runtime partagé par les composants.
                   name: {{ include "kbv1.secretName" . }}
-                  # Clé du Secret injectée dans cette variable.
                   key: POSTGRES_KM_READER_PASSWORD
-            # Injecte POSTGRES_KM_WRITER_PASSWORD depuis le Secret runtime.
             - name: POSTGRES_KM_WRITER_PASSWORD
-              # Source de cette variable, résolue par Kubernetes.
               valueFrom:
-                # Lit la valeur dans un Secret du namespace.
                 secretKeyRef:
-                  # Nom du Secret runtime partagé par les composants.
                   name: {{ include "kbv1.secretName" . }}
-                  # Clé du Secret injectée dans cette variable.
                   key: POSTGRES_KM_WRITER_PASSWORD
-            # Injecte POSTGRES_WEBUI_PASSWORD depuis le Secret runtime.
             - name: POSTGRES_WEBUI_PASSWORD
-              # Source de cette variable, résolue par Kubernetes.
               valueFrom:
-                # Lit la valeur dans un Secret du namespace.
                 secretKeyRef:
-                  # Nom du Secret runtime partagé par les composants.
                   name: {{ include "kbv1.secretName" . }}
-                  # Clé du Secret injectée dans cette variable.
                   key: POSTGRES_WEBUI_PASSWORD
-          # Redémarre le conteneur après des échecs répétés.
           livenessProbe:
-            # Exécute le contrôle dans le conteneur.
             exec:
-              # Commande lancée dans le conteneur pour ce bloc.
               command:
                 - sh
                 - -c
                 - exec pg_isready -U {{ .Values.postgres.env.user }} -d {{ .Values.postgres.env.db }} -h 127.0.0.1
-            # Délai avant le début des vérifications, en secondes.
             initialDelaySeconds: 30
-            # Intervalle entre deux vérifications, en secondes.
             periodSeconds: 10
-            # Délai maximal d’une vérification, en secondes.
             timeoutSeconds: 5
-          # Retire le pod des endpoints du Service tant que le contrôle échoue.
           readinessProbe:
-            # Exécute le contrôle dans le conteneur.
             exec:
-              # Commande lancée dans le conteneur pour ce bloc.
               command:
                 - sh
                 - -c
@@ -148,41 +83,25 @@ spec:
                   PGPASSWORD="$POSTGRES_PASSWORD" psql -X -h 127.0.0.1 -U "$POSTGRES_USER" -d "$POSTGRES_DB" \
                     -Atqc "SELECT to_regclass('rag.km_profile_units_bm25_idx') IS NOT NULL
                                   AND to_regclass('rag.km_document_text') IS NULL;" | grep -qx t
-            # Délai avant le début des vérifications, en secondes.
             initialDelaySeconds: 5
-            # Intervalle entre deux vérifications, en secondes.
             periodSeconds: 5
-            # Délai maximal d’une vérification, en secondes.
             timeoutSeconds: 5
-          # Points de montage visibles dans le conteneur.
           volumeMounts:
-            # Nom du volume à monter, défini dans la liste des volumes du pod.
             - name: postgres-data
-              # Emplacement du volume dans le conteneur.
               mountPath: /var/lib/postgresql/data
-          # Demandes et limites de ressources Kubernetes.
           resources:
             {{- toYaml .Values.postgres.resources | nindent 12 }}
-      # Sources des volumes utilisés par le pod.
       volumes:
-        # Nom du volume dans le pod.
         - name: postgres-data
-          {{- /* Utilise le stockage persistant lorsque le mode PVC est sélectionné. */ -}}
           {{- if eq .Values.postgres.persistence.type "pvc" }}
-          # Monte le volume persistant déclaré par un PVC.
           persistentVolumeClaim:
             # Sélectionne le PVC fourni ou le nom généré par la release.
             claimName: {{ if .Values.postgres.persistence.pvcName }}{{ .Values.postgres.persistence.pvcName }}{{ else }}{{ include "kbv1.fullname" . }}-postgres-data{{ end }}
-          {{- /* Utilise le chemin local du nœud lorsque le mode hostPath est sélectionné. */ -}}
           {{- else if eq .Values.postgres.persistence.type "hostPath" }}
-          # Utilise un chemin local du nœud qui héberge le pod.
           hostPath:
-            # Chemin utilisé par cette ressource.
             path: /var/lib/postgresql/data
-            # Mode de fonctionnement de cette ressource.
             type: DirectoryOrCreate
           {{- else }}
-          # Crée un volume temporaire supprimé avec le pod.
           emptyDir: {}
           {{- end }}
 {{- end }}

@@ -14,7 +14,7 @@ global:
 # Références à des Secrets Kubernetes gérés séparément du chart.
 secrets:
   # Nom du Secret runtime qui fournit les mots de passe et les jetons.
-  existingSecret: kbv1-runtime
+  existingSecret: km-runtime-secrets
 
 # Publication HTTPS et configuration des noms publics.
 ingress:

@@ -1,14 +1,10 @@
 {{- $root := . }}
-{{- /* Associe les composants à leurs ports d’écoute réels dans les pods. */ -}}
 {{- $ports := dict "webui" 4173 "km-frontend" 8088 "pdfparse" 8000 "fileserver" 8080 "km-api" 8000 "encoder" 8001 "indexer" 8011 "postgres" 5432 }}
-{{- /* Recense les composants activés pour produire leurs politiques. */ -}}
 {{- $enabled := dict "webui" .Values.webui.enabled "km-frontend" .Values.kmFrontend.enabled "pdfparse" .Values.pdfparse.enabled "fileserver" .Values.fileserver.enabled "km-api" .Values.kmApi.enabled "encoder" .Values.encoder.enabled "indexer" .Values.indexer.enabled "postgres" .Values.postgres.enabled }}
-{{- /* Recense les composants qui peuvent recevoir du trafic depuis l’Ingress. */ -}}
 {{- $exposed := list "webui" "km-frontend" "pdfparse" }}
 {{- if .Values.ingress.fileserverExposed }}
 {{- $exposed = append $exposed "fileserver" }}
 {{- end }}
-{{- /* Flux sortants entre les composants de cette release. */}}
 {{- $flows := dict
     "webui" (list "postgres" "km-api" "fileserver")
     "km-frontend" (list "km-api" "indexer" "fileserver")
@@ -17,105 +13,68 @@
 }}
 {{- range $component, $port := $ports }}
 {{- if index $enabled $component }}
-{{- /* Construit la liste des composants autorisés à joindre le pod courant. */ -}}
 {{- $sources := list }}
 {{- range $source, $targets := $flows }}
 {{- if and (index $enabled $source) (has $component $targets) }}
 {{- $sources = append $sources $source }}
 {{- end }}
 {{- end }}
-{{- /* Ouvre l’entrée aux seuls contrôleurs Ingress lorsque la route existe. */ -}}
 {{- $viaIngress := and $root.Values.ingress.enabled (has $component $exposed) }}
 ---
-# Version de l’API utilisée pour cette ressource.
 apiVersion: networking.k8s.io/v1
-# Type de ressource que Kubernetes doit créer.
 kind: NetworkPolicy
-# Identité et étiquettes de la ressource.
 metadata:
-  # Nom de la ressource dans le namespace de la release.
   name: {{ include "kbv1.fullname" $root }}-{{ $component }}
-# Configuration souhaitée pour cette ressource.
 spec:
-  # Sélectionne les pods par leurs étiquettes.
   podSelector:
-    # Toutes ces étiquettes doivent correspondre au pod ciblé.
     matchLabels:
       {{- include "kbv1.selectorLabels" $root | nindent 6 }}
-      # Étiquette qui distingue ce composant des autres pods de la release.
       app.kubernetes.io/component: {{ $component }}
-  # Applique l’isolation aux connexions entrantes et sortantes.
   policyTypes: [Ingress, Egress]
   {{- if or $sources $viaIngress }}
-  # Liste les sources admises vers ce composant. Une liste vide bloque les entrées.
   ingress:
-    # Pairs autorisés à joindre ce port.
     - from:
         {{- range $source := $sources }}
-        # Sélectionne les pods par leurs étiquettes.
         - podSelector:
-            # Toutes ces étiquettes doivent correspondre au pod ciblé.
             matchLabels:
               {{- include "kbv1.selectorLabels" $root | nindent 14 }}
-              # Étiquette qui distingue ce composant des autres pods de la release.
               app.kubernetes.io/component: {{ $source }}
         {{- end }}
         {{- if $viaIngress }}
-        # Restreint le pair réseau au namespace indiqué.
         - namespaceSelector:
-            # Toutes ces étiquettes doivent correspondre au pod ciblé.
             matchLabels:
-              # Nom exact du namespace dans la sélection.
               kubernetes.io/metadata.name: {{ $root.Values.networkPolicy.ingressController.namespace | quote }}
-          # Sélectionne les pods par leurs étiquettes.
           podSelector:
-            # Toutes ces étiquettes doivent correspondre au pod ciblé.
             matchLabels:
               {{- toYaml $root.Values.networkPolicy.ingressController.podLabels | nindent 14 }}
         {{- end }}
-      # Ports utilisés par cette ressource.
       ports:
         - { protocol: TCP, port: {{ $port }} }
   {{- else }}
-  # Liste les sources admises vers ce composant. Une liste vide bloque les entrées.
   ingress: []
   {{- end }}
-  # Liste les destinations autorisées depuis ce composant.
   egress:
-    # Pairs vers lesquels ce composant peut ouvrir une connexion.
     - to:
-        # Restreint le pair réseau au namespace indiqué.
         - namespaceSelector:
-            # Toutes ces étiquettes doivent correspondre au pod ciblé.
             matchLabels:
-              # Nom exact du namespace dans la sélection.
               kubernetes.io/metadata.name: {{ $root.Values.networkPolicy.dns.namespace | quote }}
-          # Sélectionne les pods par leurs étiquettes.
           podSelector:
-            # Toutes ces étiquettes doivent correspondre au pod ciblé.
             matchLabels:
               {{- toYaml $root.Values.networkPolicy.dns.podLabels | nindent 14 }}
-      # Ports utilisés par cette ressource.
       ports:
         - { protocol: UDP, port: 53 }
         - { protocol: TCP, port: 53 }
     {{- range $target := index $flows $component }}
     {{- if index $enabled $target }}
-    # Pairs vers lesquels ce composant peut ouvrir une connexion.
     - to:
-        # Sélectionne les pods par leurs étiquettes.
         - podSelector:
-            # Toutes ces étiquettes doivent correspondre au pod ciblé.
             matchLabels:
               {{- include "kbv1.selectorLabels" $root | nindent 14 }}
-              # Étiquette qui distingue ce composant des autres pods de la release.
               app.kubernetes.io/component: {{ $target }}
-      # Ports utilisés par cette ressource.
       ports:
         - { protocol: TCP, port: {{ index $ports $target }} }
     {{- end }}
     {{- end }}
-    {{- /* Ajoute les exceptions sortantes configurées pour ce composant. */ -}}
     {{- with index $root.Values.networkPolicy.extraEgress $component }}
     {{- toYaml . | nindent 4 }}
     {{- end }}

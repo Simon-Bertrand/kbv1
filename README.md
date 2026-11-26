@@ -8,13 +8,12 @@ L’étape `package` de [`.gitlab-ci.yml`](.gitlab-ci.yml) construit et publie l
 
 | Variable | Configuration |
 | --- | --- |
-| `REGISTRY_PATH` | Chemin du registre et de son namespace, par exemple `registry.example.org/team/kbv1`. Par défaut, `CI_REGISTRY_IMAGE`. |
-| `REGISTRY_USER`, `REGISTRY_PASSWORD` | Identifiants à fournir pour un registre externe. Le registre GitLab du projet utilise par défaut les identifiants prédéfinis. |
-| `PIP_INDEX_URL` | Définie en haut de `.gitlab-ci.yml` à partir de `GITEA_HOST` (hôte sans protocole) et `GITEA_OWNER` (organisation ou compte Gitea). Laisser les identifiants dans `GITEA_USER` et `GITEA_PAT`. |
-| `PIP_CERT` | Variable GitLab de type fichier pour une autorité de certification interne. |
-| `GITEA_BASE_REGISTRY` | Préfixe des images de base et de CI, par exemple `gitea.exemple/organisation`. |
-| `GITEA_USER`, `GITEA_PAT` | Identifiants de lecture des images de base et des wheels Gitea. Définir le PAT comme variable masquée. Configurer aussi l’authentification du runner pour tirer les images de job privées avant leur démarrage. |
-| `VERSION` | Tag des images publiées, `1.0.0` par défaut. |
+| `REGISTRY_PATH` | Hôte Gitea, sans protocole ni chemin, par exemple `gitea.example.com`. |
+| `PIP_INDEX_URL` | Définie en haut de `.gitlab-ci.yml` à partir de `REGISTRY_PATH` et `GITEA_USER` (compte Gitea qui héberge les wheels). |
+| `PIP_TRUSTED_HOST` | Hôte Gitea facultatif. Laisser vide pour vérifier le certificat TLS. |
+| `GITEA_BASE_REGISTRY` | Préfixe des images applicatives, de base et de CI, défini par défaut à `${REGISTRY_PATH}/${GITEA_USER}`. |
+| `GITEA_USER`, `GITEA_PAT` | Identifiants pour lire les images de base et les wheels, et publier les images applicatives dans Gitea. La CI les insère dans l’URL pip transmise à l’étape d’installation. Définir le PAT comme variable masquée. Configurer aussi l’authentification du runner pour tirer les images de job privées avant leur démarrage. |
+| `VERSION` | Tag des images publiées et déployées. Par défaut, le SHA complet du commit GitLab. |
 
 ### Préproduction sans accès à Internet
 
@@ -29,9 +28,9 @@ GITEA_PYPI_UPLOAD_URL=https://gitea.exemple/api/packages/organisation/pypi ./scr
 ```
 
 Configurer `TWINE_USERNAME` et `TWINE_PASSWORD` avant la publication des wheels.
-Le premier script charge les archives vérifiées et pousse les images ainsi que
-les images de job Buildah et Helm. Le runner installe directement les wheels de Gitea avec pip, sans cache ni
-compilation de dépendances. Il publie les images applicatives vers `REGISTRY_PATH`.
+Le premier script charge les archives vérifiées, pousse les images de base,
+construit l’image de job `ci-buildah-helm:latest` et publie l’image `aws-cli:2` utilisée par PdfParse pour la copie S3. Le runner installe directement les wheels de Gitea avec pip, sans cache ni
+compilation de dépendances. Il publie les images applicatives sous `GITEA_BASE_REGISTRY`.
 Ce registre doit être accessible au runner et au cluster. Si le runner utilise une image auxiliaire, configurer aussi sa copie sur un registre interne. Pour le profil PdfParse
 complet, utiliser `PDFPARSE_WHEEL_PROFILE=pdfparse-full` à la préparation et
 dans GitLab CI/CD.
@@ -45,10 +44,12 @@ docker compose up -d --build
 
 Renseigner le fichier `.env` à partir de `.env.example`, et préparer les
 répertoires de données et de modèles. `make prepare-bases` construit les bases
-Docker locales sous `knowledgebase/*:local` et compile la wheel CUDA de PdfParse
+Docker locales sous `knowledgebase/*:latest` et compile la wheel CUDA de PdfParse
 sur la machine de dev. Les builds Compose installent cette wheel et téléchargent
 les autres dépendances depuis PyPI et les index spécialisés publics. Aucun
 artefact Gitea n’est requis en développement.
+
+Compose monte directement `./data` sur `/data` et `/mnt/e/models` sur `/models` en lecture seule. Tu peux changer les chemins hôte dans `.env` avec `DATA_DIR` et `MODELS_DIR`. Le service PdfParse fixe `KM_SKIP_MOUNTSYNC=1` et démarre sur ces montages locaux. Le conteneur d’initialisation S3 est propre au déploiement Helm.
 
 Les fichiers dans `docker/python/` fixent toutes les versions installées dans
 les deux environnements, y compris les dépendances transitives. Après avoir
@@ -100,7 +101,7 @@ pdfparse:
     adminUser: "studio"
 
 secrets:
-  existingSecret: kbv1-runtime
+  existingSecret: km-runtime-secrets
 
 ingress:
   enabled: true
@@ -131,17 +132,59 @@ helm upgrade --install kbv1 helm/kbv1 --namespace kbv1 -f values-site.yaml
 
 ### Déployer depuis GitLab CI
 
-Une fois les huit images publiées, lance le job manuel `deploy:preprod` depuis le pipeline de la branche par défaut. Il valide le chart puis installe ou met à jour la release `kbv1` avec le `REGISTRY_PATH` et la `VERSION` du pipeline.
+Une fois les huit images publiées, lance le job manuel `deploy:preprod` depuis le pipeline de la branche par défaut. Il valide le chart puis installe ou met à jour la release `kbv1` avec le `GITEA_BASE_REGISTRY` et la `VERSION` du pipeline.
 
 | Variable GitLab | Valeur à fournir |
 | --- | --- |
 | `KUBE_PREPROD_CONTEXT` | Nom du contexte Kubernetes à utiliser, par exemple celui fourni par l’agent GitLab |
 | `KUBE_PREPROD_VALUES` | Variable de type **Fichier** contenant les valeurs du site adaptées au cluster |
-| `KUBE_NAMESPACE` | Namespace existant de la release. Valeur par défaut `kbv1` |
+| `KUBE_NAMESPACE` | Namespace existant de la release. Valeur par défaut `namespace` |
+| `KUBE_DEPLOY_TIMEOUT` | Délai d’attente de Helm. Valeur par défaut `12m`. Augmenter ce délai si la première copie S3 prend plus longtemps. |
 
-Le runner doit disposer d’un kubeconfig avec le contexte indiqué. Prépare les Secrets et les PVC référencés par les valeurs du site, avec les poids E5 déjà présents pour que l’encodeur démarre. Incrémente `VERSION` pour chaque nouvelle livraison d’images afin que Kubernetes détecte le changement et remplace les pods.
+Le runner doit disposer d’un kubeconfig avec le contexte indiqué. Prépare les Secrets et les PVC référencés par les valeurs du site, avec les poids E5 déjà présents pour que l’encodeur démarre. Chaque nouveau commit fournit à Helm un tag distinct pour que Kubernetes remplace les pods.
 
 ## Remplir les volumes du corpus et des modèles avec Helm
+
+### Synchronisation S3 au démarrage de PdfParse
+
+Renseigne le préfixe S3 et la règle réseau dans [`value-pdfparse.yaml`](helm/kbv1/value-pdfparse.yaml). Remplace l’adresse d’exemple `192.0.2.10/32` par la plage IP de ton endpoint S3. Tu peux aussi utiliser les sélecteurs du service qui donne accès à S3 dans le cluster.
+
+```yaml
+pdfparse:
+  s3Sync:
+    prefix: s3://mon-bucket/pdfparse
+networkPolicy:
+  extraEgress:
+    pdfparse:
+      - to:
+          - ipBlock:
+              cidr: 192.0.2.10/32
+        ports:
+          - protocol: TCP
+            port: 443
+```
+
+| Source S3 | Chemin dans le conteneur | PVC existant |
+| --- | --- | --- |
+| `<prefix>/documents/` | `/data` | `km-data` |
+| `<prefix>/modeles/` | `/models` | `km-models` |
+
+À la première création du pod, `s3-ingest` copie les fichiers nouveaux ou modifiés et conserve ceux présents uniquement sur les PVC. Après chaque copie réussie, il écrit une marque sur le volume concerné. Les pods suivants sautent la copie des volumes déjà synchronisés pour le même préfixe et la même révision. Si une copie échoue, Kubernetes la retente avant de démarrer le Studio. [Référence AWS CLI](https://docs.aws.amazon.com/cli/latest/reference/s3/sync.html)
+
+Pour récupérer de nouveaux fichiers depuis le même préfixe, change `pdfparse.s3Sync.revision` dans les valeurs Helm, par exemple de `v1` à `v2`. Laisse le préfixe vide si les volumes sont alimentés autrement.
+
+- **Image.** Depuis la machine connectée, `scripts/upload-gitea-images.sh` vérifie et publie AWS CLI sous `<global.imageRegistry>/aws-cli:2`. Pour utiliser une autre image déjà disponible, renseigne `pdfparse.s3Sync.image`. Le pod utilise `km-pull-secrets` pour la tirer.
+- **Accès S3.** Pour les copies, crée le Secret `km-s3-secrets` dans le même namespace que PdfParse. Il fournit `AWS_ACCESS_KEY_ID` et `AWS_SECRET_ACCESS_KEY`, ainsi que `AWS_SESSION_TOKEN` si les identifiants sont temporaires. Le compte doit pouvoir lister les deux préfixes et lire leurs objets. Si nécessaire, ajoute `AWS_DEFAULT_REGION` au Secret. Un démarrage qui saute les deux copies n’a pas besoin d’identifiants.
+- **Réseau.** Helm exige une règle de sortie lorsque le préfixe est renseigné. La règle s’applique à tout le pod, y compris à `s3-ingest`. Vérifie que l’adresse autorisée correspond à celle du service S3.
+- **Volumes.** Les PVC doivent exister et être accessibles en écriture à l’UID 1000. Le modèle reste monté en lecture seule côté PdfParse. Si la première copie prend plus de 12 minutes, augmente `KUBE_DEPLOY_TIMEOUT` dans GitLab.
+
+```sh
+NS=namespace
+kubectl -n "$NS" get pvc km-data km-models
+kubectl -n "$NS" get secret km-pull-secrets km-s3-secrets
+kubectl -n "$NS" logs -f deployment/kbv1-pdfparse -c s3-ingest
+kubectl -n "$NS" rollout status deployment/kbv1-pdfparse
+```
 
 ### Depuis S3 et Gitea
 
