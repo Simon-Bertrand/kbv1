@@ -1,167 +1,97 @@
-# Helm Chart : kbv1 (Environnement de Développement)
+# Déployer KBv1 avec Helm
 
-Ce chart Helm est l'**équivalent Kubernetes strict de `compose.dev.yaml`** pour l'ensemble du projet **KBv1**. Il orchestre l'intégralité des microservices et interfaces de la plateforme.
+## PdfParse seul
 
----
+Le fichier `helm/kbv1/value-pdfparse.yaml` déploie uniquement PdfParse. Le Studio et son API sont accessibles sur `https://km-<nom-add>-01.<domain_name>` avec le Basic Auth de PdfParse. Remplacer `nom-add` par le nom ADD en minuscules, avec des tirets pour séparer les mots.
 
-## 📦 Correspondance Compose <-> Kubernetes
+Dans le namespace de la release, préparer `km-runtime-secrets` avec la clé `PDFPARSE_ADMIN_PASSWORD` (au moins 16 caractères) et `km-pull-secrets` avec les identifiants de lecture du registre. Le nom d’utilisateur du Studio est `studio` par défaut. Renseigner l’Issuer dans les annotations de l’Ingress. Cert-manager génère et renouvelle `km-tls-secret`. Les commandes de gestion sont commentées dans le profil.
 
-| Service Compose | Rôle & Technologies | Port Conteneur | Port Service Dev | Accès Ingress Dev |
-|---|---|---|---|---|
-| `postgres` | Base pgvector & RLS (schémas `rag`, `webui`) | `5432` | `5432` / NodePort `35432` | Interne |
-| `fileserver` | Serveur de documents et assets Nginx sécurisé | `8080` (health: `8081`) | `8080` / NodePort `38080` | `fileserver.kb.local` |
-| `pdfparse` | Moteur d'extraction PDF + **Front Studio** | `8000` | `8000` / NodePort `38000` | `studio.kb.local` |
-| `encoder` | Modèle d'embedding `multilingual-e5-large` (FastAPI) | `8001` | `8001` / NodePort `38001` | Interne |
-| `km-api` | Recherche documentaire (BM25, sémantique, hybride) + init | `8000` | `8000` / NodePort `38002` | Interne |
-| `indexer` | Service d'ingestion et synchronisation vectorielle | `8011` | `8011` / NodePort `38011` | Interne |
-| `km-frontend` | **Console d'administration** & visualisation RAG | `8088` | `8088` / NodePort `38088` | `km.kb.local` |
-| `webui` | **Interface utilisateur Chat RAG** (Next.js) | `4173` | `3000` / NodePort `33000` | `webui.kb.local` |
+Le pod monte le PVC existant `km-data` sur `/data` et le PVC `km-models` sur `/models` en lecture seule. Pour synchroniser les deux volumes au démarrage, renseigner `pdfparse.s3Sync.prefix` et autoriser l’accès réseau à S3. Le conteneur d’initialisation doit pouvoir écrire sur les deux PVC. [Configuration de la synchronisation S3](../../README.md#synchronisation-s3-au-démarrage-de-pdfparse)
 
----
-
-## 🗄️ Volumes & Persistance
-
-La stack Compose utilisait des volumes Docker et des bind-mounts hôte. Le chart les transpose de manière configurable dans `sharedStorage` :
-
-1. **`corpus` (`./data`)** : Monté dans `fileserver` (`/srv/data`), `pdfparse` (`/data`), `km-api` (`/data`) et `indexer` (`/data`).
-2. **`models` (`./models`)** : Monté en lecture seule dans `encoder` (`/models`) et `pdfparse` (`/models`).
-3. **`sourceVersions` (`source-versions`)** : Volume partagé avec initialisation des permissions (`source-versions-init`) exécutée en `initContainer`.
-4. **`indexerState` (`indexer-state`)** : État d'ingestion de l'indexeur avec alignement UID (`initContainer state-init`).
-5. **`pdfparseAssets` (`pdfparse-assets`)** : Stockage temporaire des aperçus PDF.
-6. **`postgresData` (`postgres-data`)** : Données persistantes PostgreSQL.
-
----
-
-## 🔐 Identifiants Basic Auth (`basicAuth`)
-
-Les utilisateurs et mots de passe des Basic Auth pour **PdfParse**, **Fileserver** et **KM Frontend** sont centralisés au tout début de `values.yaml` :
-
-```yaml
-basicAuth:
-  # 1. Studio d'extraction PDF (FastAPI)
-  # NOTE : Le mot de passe doit comporter >= 16 caractères (exigence de sécurité)
-  pdfparse:
-    user: "studio"
-    password: "dev-studio-password"
-
-  # 2. Explorateur web et API du Fileserver (Nginx)
-  fileserver:
-    user: "dev"
-    password: "dev"
-
-  # 3. Console d'administration KM-Frontend (FastAPI)
-  # NOTE : En dev, laisser vide "" désactive le Basic Auth.
-  # Renseigner un mot de passe pour l'activer (ex: "dev-console-password").
-  kmFrontend:
-    user: "admin"
-    password: ""
+```sh
+helm lint --strict helm/kbv1 -f helm/kbv1/value-pdfparse.yaml
+IMAGE_TAG=$(git rev-parse HEAD)
+helm upgrade --install kbv1 helm/kbv1 --namespace namespace \
+  -f helm/kbv1/value-pdfparse.yaml --set-string "global.imageTag=$IMAGE_TAG"
 ```
 
----
+La commande manuelle suppose que l’image du commit courant a déjà été publiée. Dans GitLab, utiliser le contenu de `helm/kbv1/value-pdfparse.yaml` pour la variable de type fichier `KUBE_PREPROD_VALUES`. La CI fournit le préfixe de registre et le tag de l’image.
 
-## 🌐 Configuration du domaine et des sous-domaines Ingress
+## Stack complète
 
-Dans `values.yaml`, vous pouvez configurer le nom de domaine racine `domain_name` ainsi que le nom de sous-domaine de chaque interface :
+Copier `values-site.example.yaml` en `values-site.yaml` et adapter les valeurs au cluster.
 
-```yaml
-# Nom de domaine racine (ex: kb.local ou 127.0.0.1.nip.io)
-domain_name: "kb.local"
+- `global.imageRegistry` correspond à `REGISTRY_PATH` dans GitLab, par exemple `registry.example.test/team/kbv1`.
+- `global.imageTag` correspond à `VERSION` dans GitLab, par défaut le SHA du commit. Pour un déploiement manuel, indiquer le tag effectivement publié.
+- `global.imagePullSecrets` référence le Secret Docker du namespace lorsque le registry est privé.
+- `domain_name` et `ingress.subdomains` définissent les quatre noms DNS. Le Secret TLS `ingress.tlsSecretName` doit contenir un certificat couvrant les noms exposés.
+- Prévoir au moins `128Gi` pour le corpus et `64Gi` pour les modèles. Avec un `pvcName` renseigné, Helm monte le PVC existant et sa capacité se gère séparément. Pour que Helm crée un PVC, laisser `pvcName: ""` et indiquer si nécessaire une `storageClassName` compatible `ReadWriteMany`. Les modèles doivent être préchargés. Le volume partagé des versions de documents doit aussi accepter `ReadWriteMany`.
+- PdfParse réserve un GPU NVIDIA. Le cluster doit annoncer la ressource `nvidia.com/gpu` sur au moins un nœud.
 
-ingress:
-  enabled: true
-  subdomains:
-    webui: "webui"            # -> webui.kb.local
-    kmFrontend: "km"          # -> km.kb.local
-    pdfparseStudio: "studio"  # -> studio.kb.local
-    fileserver: "fileserver"  # -> fileserver.kb.local
+| Composant | Demandes Kubernetes | Limites Kubernetes |
+| --- | --- | --- |
+| PdfParse | 8 vCPU, 16 GiB de RAM, 1 GPU NVIDIA | 8 vCPU, 24 GiB de RAM, 1 GPU NVIDIA |
+| Encodeur E5 | 12 vCPU, 8 GiB de RAM | 12 vCPU, 12 GiB de RAM |
+
+L’encodeur charge multilingual-e5-large depuis le PVC de modèles et exécute l’inférence sur CPU. Les pools OpenMP et MKL suivent la limite CPU du conteneur. Le nombre de threads et la mémoire réservée donnent un point de départ à valider sous charge sur les nœuds cibles. [Fiche du modèle](https://huggingface.co/intfloat/multilingual-e5-large) · [Réglages des threads PyTorch](https://docs.pytorch.org/docs/stable/threading_environment_variables.html)
+
+```sh
+helm lint --strict helm/kbv1 -f values-site.yaml
+helm upgrade --install kbv1 helm/kbv1 \
+  --namespace kbv1 --create-namespace -f values-site.yaml
 ```
 
-Les URLs internes (`WEBUI_AUTH_URL`, `FILESERVER_PUBLIC_URL`, `WEBUI_PUBLIC_ORIGIN`) s'adaptent automatiquement et dynamiquement à ces valeurs.
+## Routes HTTPS
 
----
+| Hôte par défaut | Chemin | Authentification |
+| --- | --- | --- |
+| `webui.kb.local` | `/` | Session WebUI avec compte local ou OIDC |
+| `km.kb.local` | `/` | Basic Auth géré par KM Frontend |
+| `studio.kb.local` | `/` | Basic Auth géré par PdfParse Studio |
+| `fileserver.kb.local` | `/` | Basic Auth à l’Ingress, puis authentification de l’explorateur |
+| `fileserver.kb.local` | `/files` | JWT pour les PDF depuis WebUI ou session de l’explorateur Fileserver |
 
-## Pipeline GitLab
+Les services Kubernetes sont de type `ClusterIP`. PostgreSQL, KM API, l’encodeur et l’indexeur restent internes. La configuration d’Ingress reprend la classe `nginx` et ses annotations Ingress NGINX. Le contrôleur communautaire Ingress NGINX a été retiré en mars 2026 et ne reçoit plus de correctifs. [Annonce de Kubernetes](https://kubernetes.io/blog/2026/01/29/ingress-nginx-statement/)
 
-Les branches de merge request valident le rendu Helm. La branche principale et
-les tags construisent les huit images hors ligne, les publient dans le registre
-GitLab avec le SHA du commit, puis publient le chart configuré pour ce même SHA.
+L’image Fileserver active son explorateur avec `KB_ENV=dev`. Le chart limite ce mode au Fileserver et à la console KM qui l’interroge. Le chart vérifie leurs mots de passe au démarrage. Désactiver uniquement l’explorateur avec `ingress.fileserverUi.enabled=false` conserve la route PDF.
 
-- Le job `images:publish` attend un runner Shell tagué `kbv1-docker`. Le
-  runner doit avoir accès au moteur Docker local avec les images de build
-  `knowledgebase/*:local` déjà chargées et compatibles avec le `uv.lock`.
-- Renseigner `KUBE_DEV_CONTEXT` et `KUBE_DEV_VALUES`, une variable GitLab de
-  type fichier fondée sur [values-site.example.yaml](values-site.example.yaml).
-  Le namespace, les PVC externes et les Secrets doivent être provisionnés avant
-  de déclencher le job manuel. Adapter `KUBE_NAMESPACE` et `WEBUI_DEV_URL` au site.
-- Le secret nommé dans `secrets.existingSecret` doit contenir les clés utilisées
-  par les références `secretKeyRef` du rendu Helm. Pour la WebUI, fournir
-  `WEBUI_AUTH_ADMIN_LOGIN` et `WEBUI_AUTH_ADMIN_PASSWORD`, ou sélectionner
-  `webui.env.authMode=oidc` et fournir les trois variables `WEBUI_AUTH_OIDC_*`.
-  `global.imagePullSecrets` référence le secret de lecture du registre, distinct
-  du secret applicatif.
-- Configurer les volumes qui contiennent le corpus et les modèles. Le volume
-  des versions PDF doit être partagé entre les Pods. Le PVC PostgreSQL conserve
-  les données et le déploiement attend un schéma compatible BM25. Les scripts
-  d'initialisation ne sont exécutés que sur une base vide. Pour une base existante,
-  appliquer la mise à niveau SQL et recalculer les embeddings dans une opération
-  séparée avant de déployer cette version.
-- Avec un Ingress TLS, prévoir les noms WebUI et Fileserver dans le certificat.
-  Sans Ingress, fournir les URLs publiques réelles de la WebUI et du Fileserver
-  ainsi que l'origine WebUI autorisée par le Fileserver.
+## Secrets et variables
 
-Le job dev utilise `--atomic --wait` et n'efface aucun PVC. Helm ne migre pas
-une instance PostgreSQL déjà initialisée.
+Créer les Secrets dans le namespace de la release avant le déploiement. Les clés d’environnement ci-dessous proviennent du Secret `secrets.existingSecret`.
 
-## 🚀 Utilisation rapide
+| Composants | Clés du Secret |
+| --- | --- |
+| PostgreSQL et clients SQL | `POSTGRES_PASSWORD`, `POSTGRES_AGENT_PASSWORD`, `POSTGRES_KM_READER_PASSWORD`, `POSTGRES_KM_WRITER_PASSWORD`, `POSTGRES_WEBUI_PASSWORD` |
+| Échanges internes | `KM_API_TOKEN`, `KM_ENCODER_TOKEN`, `KM_INDEXER_TOKEN`, `KM_INDEXER_ADMIN_TOKEN` |
+| Fileserver | `FILESERVER_JWT_SECRET`, `FILESERVER_UI_SECRET`, `FILESERVER_DEV_PASSWORD` |
+| Interfaces KM et Studio | `KM_CONSOLE_PASSWORD`, `PDFPARSE_ADMIN_PASSWORD` |
+| WebUI | `WEBUI_AUTH_SECRET` et `WEBUI_AUTH_ADMIN_LOGIN` / `WEBUI_AUTH_ADMIN_PASSWORD` en mode `admin`, ou `WEBUI_AUTH_OIDC_ISSUER`, `WEBUI_AUTH_OIDC_ID`, `WEBUI_AUTH_OIDC_SECRET` en mode `oidc` |
+| Agent externe, si configuré | `KM_AGENT_TOKEN` pour WebUI et `KM_AGENT_ADMIN_TOKEN` pour KM Frontend |
 
-Les exemples supposent les images chargées localement, le namespace, le stockage et le Secret `kbv1-runtime` provisionnés.
+Utiliser des secrets JWT et de session aléatoires d’au moins 32 caractères. Les mots de passe des interfaces Basic Auth et les jetons KM doivent comporter au moins 16 caractères. Les identifiants sont configurables dans `fileserver.env.devUser`, `kmFrontend.env.consoleUser` et `pdfparse.env.adminUser`.
 
-### 1. Option A : Wildcard DNS dynamique (Zéro config `/etc/hosts`)
-En définissant `domain_name: 127.0.0.1.nip.io` :
-```bash
-helm upgrade --install kbv1 ./helm/kbv1 \
-  --set domain_name=127.0.0.1.nip.io \
-  --namespace kbv1 --create-namespace
-```
-Les interfaces sont accessibles immédiatement sur :
-- `http://webui.127.0.0.1.nip.io`
-- `http://km.127.0.0.1.nip.io`
-- `http://studio.127.0.0.1.nip.io`
+Pour l’explorateur Fileserver, le Secret Ingress `ingress.fileserverUi.authSecretName` doit contenir une clé `auth` au format htpasswd. Utiliser le même identifiant et le même mot de passe dans htpasswd et dans la configuration Fileserver. Avec les noms par défaut et le namespace `kbv1` :
 
-### 2. Option B : Avec `/etc/hosts`
-Ajoutez les entrées locales :
-```text
-127.0.0.1 webui.kb.local km.kb.local studio.kb.local fileserver.kb.local
-```
-Puis déployez normalement :
-```bash
-helm upgrade --install kbv1 ./helm/kbv1 --namespace kbv1 --create-namespace
+```sh
+auth_file=$(mktemp)
+htpasswd -cB "$auth_file" dev
+kubectl -n kbv1 create secret generic kbv1-fileserver-basic-auth --from-file=auth="$auth_file"
+rm -f "$auth_file"
 ```
 
-### 2. Validation & Simulation
-```bash
-# Vérifier la validité syntaxique du chart
-helm lint helm/kbv1
+Le chart calcule les URL internes et les URL publiques HTTPS. Les valeurs `webui.env.authUrl`, `webui.env.fileserverPublicUrl` et `fileserver.env.webuiPublicOrigin` permettent de fournir des URL explicites.
 
-# Générer les manifests Kubernetes
-helm template kbv1-dev helm/kbv1
-```
+## Isolement réseau
 
-### 3. Déploiement sur cluster Kubernetes local (k3d, Minikube, Kind)
-```bash
-helm upgrade --install kbv1 ./helm/kbv1 \
-  --namespace kbv1 \
-  --create-namespace
-```
+Les NetworkPolicies isolent les pods de la release en entrée et en sortie. Elles exigent un CNI qui applique les NetworkPolicies. Les labels des pods DNS et du contrôleur Ingress sont configurables sous `networkPolicy`.
 
-### 4. Accès direct sans Ingress via Port-Forward
-```bash
-# WebUI (Chat RAG)
-kubectl port-forward svc/kbv1-webui 3000:3000 -n kbv1
+| Source | Destinations autorisées |
+| --- | --- |
+| Contrôleur Ingress | WebUI, KM Frontend, PdfParse et Fileserver sur leurs ports HTTP |
+| WebUI | PostgreSQL, KM API, Fileserver |
+| KM Frontend | KM API, indexeur, Fileserver |
+| KM API | PostgreSQL, encodeur, Fileserver |
+| Indexeur | PostgreSQL, encodeur, KM API |
+| Pods KBv1 | DNS du cluster sur TCP et UDP 53 |
 
-# KM Frontend (Console d'administration RAG)
-kubectl port-forward svc/kbv1-km-frontend 8088:8088 -n kbv1
-
-# PdfParse Studio (Extraction PDF)
-kubectl port-forward svc/kbv1-pdfparse 8000:8000 -n kbv1
-```
+Les accès sortants vers un fournisseur OIDC, un agent, un reranker ou un service d’ingestion se déclarent séparément sous `networkPolicy.extraEgress.<composant>`. Utiliser les sélecteurs de pods du service ou les CIDR et ports nécessaires. En mode OIDC, WebUI doit pouvoir accéder à l’issuer HTTPS.

@@ -22,7 +22,7 @@ requires = ["hatchling>=1.26"]
 build-backend = "hatchling.build"
 
 [tool.hatch.build.targets.wheel]
-only-include = ["server.py", "km_frontend_logging.py"]
+only-include = ["server.py", "src/__init__.py", "src/logging.py"]
 
 
 [tool.pytest.ini_options]

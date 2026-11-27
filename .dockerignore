@@ -1,0 +1,13 @@
+**/.git
+**/.venv
+**/__pycache__
+**/node_modules
+**/.next
+**/.pytest_cache
+.tarball
+.wheelhouse
+.wheelhouse-*
+models
+data
+.env
+.env.*

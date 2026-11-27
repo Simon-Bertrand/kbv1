@@ -1,12 +1,12 @@
 {{/*
-Expand the name of the chart.
+Choisit le nom par défaut ou nameOverride et le limite à 63 caractères.
 */}}
 {{- define "kbv1.name" -}}
 {{- default .Chart.Name .Values.nameOverride | trunc 63 | trimSuffix "-" }}
 {{- end }}
 
 {{/*
-Create a default fully qualified app name.
+Construit le nom de base des ressources à partir de la release, ou applique fullnameOverride.
 */}}
 {{- define "kbv1.fullname" -}}
 {{- if .Values.fullnameOverride }}
@@ -22,14 +22,14 @@ Create a default fully qualified app name.
 {{- end }}
 
 {{/*
-Create chart name and version as used by the chart label.
+Construit une étiquette Helm valide avec le nom et la version du chart.
 */}}
 {{- define "kbv1.chart" -}}
 {{- printf "%s-%s" .Chart.Name .Chart.Version | replace "+" "_" | trunc 63 | trimSuffix "-" }}
 {{- end }}
 
 {{/*
-Common labels
+Ajoute les étiquettes de gestion Helm, de version et d’environnement.
 */}}
 {{- define "kbv1.labels" -}}
 helm.sh/chart: {{ include "kbv1.chart" . }}
@@ -42,21 +42,25 @@ environment: {{ .Values.global.environment | default "dev" | quote }}
 {{- end }}
 
 {{/*
-Selector labels
+Conserve des sélecteurs stables fondés sur le nom du chart et l’identité de la release.
 */}}
 {{- define "kbv1.selectorLabels" -}}
 app.kubernetes.io/name: {{ include "kbv1.name" . }}
 app.kubernetes.io/instance: {{ .Release.Name }}
 {{- end }}
 
+{{- /* Compose la référence de l’image à partir du registre requis, du dépôt et du tag global. */ -}}
 {{- define "kbv1.image" -}}
-{{- $repo := .image.repository -}}
-{{- with .root.Values.global.imageRegistry -}}
-{{- $repo = printf "%s/%s" (trimSuffix "/" .) (last (splitList "/" $repo)) -}}
-{{- end -}}
-{{- printf "%s:%s" $repo (default .image.tag .root.Values.global.imageTag) -}}
+{{- $registry := required "Renseigner global.imageRegistry avec le REGISTRY_PATH GitLab" .root.Values.global.imageRegistry -}}
+{{- printf "%s/%s:%s" (trimSuffix "/" $registry) .image.repository .root.Values.global.imageTag -}}
 {{- end -}}
 
+{{- /* Exige le nom du Secret runtime existant qui fournit les identifiants. */ -}}
 {{- define "kbv1.secretName" -}}
-{{- default (printf "%s-secrets" (include "kbv1.fullname" .)) .Values.secrets.existingSecret -}}
+{{- required "Renseigner secrets.existingSecret" .Values.secrets.existingSecret -}}
+{{- end -}}
+
+{{- /* Combine le sous-domaine de la route et le domaine commun pour former son hôte public. */ -}}
+{{- define "kbv1.host" -}}
+{{- printf "%s.%s" (index .root.Values.ingress.subdomains .name) .root.Values.domain_name -}}
 {{- end -}}

@@ -29,6 +29,8 @@ pdfparse-download-models = "pdfparse.models.download:main"
 pdfparse-studio = "pdfparse.backend.__main__:main"
 
 [project.optional-dependencies]
+pipeline-base = ["pdfparse[studio,ocr-transformers,vlm,quantization,cuda-kernels]"]
+pipeline-full = ["pdfparse[pipeline-base,layout-lite,ocr-rapid]"]
 studio = ["fastapi>=0.115,<1", "uvicorn>=0.34,<1"]
 layout-lite = ["pdfparse[ocr-paddle]"]
 vlm = ["transformers>=5.19,<6", "torch>=2.6,<3"]

@@ -1,0 +1,33 @@
+{{- $root := . -}}
+{{- $services := list
+  (dict "name" "encoder" "values" .Values.encoder "targetPort" 8001)
+  (dict "name" "fileserver" "values" .Values.fileserver "targetPort" 8080)
+  (dict "name" "indexer" "values" .Values.indexer "targetPort" 8011)
+  (dict "name" "km-api" "values" .Values.kmApi "targetPort" 8000)
+  (dict "name" "km-frontend" "values" .Values.kmFrontend "targetPort" 8088)
+  (dict "name" "pdfparse" "values" .Values.pdfparse "targetPort" 8000)
+  (dict "name" "postgres" "values" .Values.postgres "targetPort" 5432 "portName" "postgres")
+  (dict "name" "webui" "values" .Values.webui "targetPort" 4173)
+-}}
+{{- range $service := $services }}
+{{- if $service.values.enabled }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "kbv1.fullname" $root }}-{{ $service.name }}
+  labels:
+    {{- include "kbv1.labels" $root | nindent 4 }}
+    app.kubernetes.io/component: {{ $service.name }}
+spec:
+  type: ClusterIP
+  ports:
+    - port: {{ $service.values.service.port }}
+      targetPort: {{ $service.targetPort }}
+      protocol: TCP
+      name: {{ default "http" $service.portName }}
+  selector:
+    {{- include "kbv1.selectorLabels" $root | nindent 4 }}
+    app.kubernetes.io/component: {{ $service.name }}
+{{- end }}
+{{- end }}

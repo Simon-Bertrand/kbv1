@@ -1,22 +1,70 @@
-# Configuration du site dev à fournir via la variable GitLab fichier KUBE_DEV_VALUES.
+# Adapter ce fichier au cluster, puis le passer à helm avec -f.
 domain_name: kb.example.test
+# Valeurs partagées entre les composants de la release.
 global:
+  # Chemin du registre et du namespace, identique à REGISTRY_PATH dans GitLab.
+  imageRegistry: registry.example.test/team/kbv1
+  # Tag des images déployées, identique à VERSION dans GitLab.
+  imageTag: "1.0.0"
+  # Liste des Secrets Docker du namespace du déploiement.
   imagePullSecrets:
+    # Nom du Secret Docker dans le namespace de la release.
     - name: gitlab-registry
+
+# Références à des Secrets Kubernetes gérés séparément du chart.
 secrets:
-  create: false
-  existingSecret: kbv1-runtime
+  # Nom du Secret runtime qui fournit les mots de passe et les jetons.
+  existingSecret: km-runtime-secrets
+
+# Publication HTTPS et configuration des noms publics.
+ingress:
+  # Nom du Secret TLS dont le certificat couvre les hôtes exposés.
+  tlsSecretName: kbv1-tls
+  # Publication et authentification HTTP de l’explorateur Fileserver.
+  fileserverUi:
+    # Nom du Secret Basic Auth qui contient la clé htpasswd auth.
+    authSecretName: kbv1-fileserver-basic-auth
+
+# Sélecteurs et exceptions des politiques réseau.
+networkPolicy:
+  # Identité des pods du contrôleur habilités à joindre les interfaces.
+  ingressController:
+    # Namespace dans lequel chercher les pods qui correspondent aux labels.
+    namespace: ingress-nginx
+    # Étiquettes qui doivent correspondre au pod réseau autorisé.
+    podLabels:
+      # Identifie l’application du contrôleur Ingress.
+      app.kubernetes.io/name: ingress-nginx
+      # Sélectionne le composant contrôleur de l’Ingress.
+      app.kubernetes.io/component: controller
+  # Identité des pods qui résolvent les noms DNS du cluster.
+  dns:
+    # Namespace dans lequel chercher les pods qui correspondent aux labels.
+    namespace: kube-system
+    # Étiquettes qui doivent correspondre au pod réseau autorisé.
+    podLabels:
+      # Identifie les pods du DNS du cluster.
+      k8s-app: kube-dns
+  # En mode OIDC, ajouter ici la règle qui permet à WebUI de joindre l'IdP sur TCP 443.
+  extraEgress: {}
+
+# Volumes partagés ou persistants utilisés par les composants.
 sharedStorage:
+  # Volume sur lequel est monté le corpus de documents.
   corpus:
-    type: pvc
+    # Nom d’un PVC existant. Une chaîne vide permet au chart d’en générer le nom.
     pvcName: kbv1-corpus
+  # Volume préchargé avec les poids des modèles d’embeddings et de traitement PDF.
   models:
-    type: pvc
+    # Nom d’un PVC existant. Une chaîne vide permet au chart d’en générer le nom.
     pvcName: kbv1-models
+  # Volume partagé qui conserve les versions archivées des PDF.
   sourceVersions:
-    type: pvc
+    # Nom d’un PVC existant. Une chaîne vide permet au chart d’en générer le nom.
     pvcName: kbv1-source-versions
+# PostgreSQL, avec le schéma et les rôles SQL de la stack.
 postgres:
+  # Choix de volume pour les données PostgreSQL.
   persistence:
-    type: pvc
+    # Nom d’un PVC existant. Une chaîne vide permet au chart d’en générer le nom.
     pvcName: kbv1-postgres-data

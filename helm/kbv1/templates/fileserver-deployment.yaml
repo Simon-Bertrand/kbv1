@@ -1,6 +1,6 @@
 {{- if .Values.fileserver.enabled }}
-{{- $domain := .Values.domain_name | default "kb.local" -}}
-{{- $webuiHost := printf "%s.%s" .Values.ingress.subdomains.webui $domain -}}
+{{- $fileserverHost := include "kbv1.host" (dict "root" . "name" "fileserver") -}}
+{{- $webuiHost := include "kbv1.host" (dict "root" . "name" "webui") -}}
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -20,6 +20,8 @@ spec:
         {{- include "kbv1.selectorLabels" . | nindent 8 }}
         app.kubernetes.io/component: fileserver
     spec:
+      # Empêche le montage automatique d’un jeton d’accès à l’API Kubernetes.
+      automountServiceAccountToken: false
       {{- with .Values.global.imagePullSecrets }}
       imagePullSecrets:
         {{- toYaml . | nindent 8 }}
@@ -28,24 +30,41 @@ spec:
         - name: fileserver
           image: {{ include "kbv1.image" (dict "root" . "image" .Values.fileserver.image) | quote }}
           imagePullPolicy: {{ .Values.fileserver.image.pullPolicy }}
+          command: ["/bin/sh", "-ec"]
+          args:
+            - |
+              if [ "${#FILESERVER_JWT_SECRET}" -lt 32 ] ||
+                 [ "${#FILESERVER_UI_SECRET}" -lt 32 ] ||
+                 [ "$FILESERVER_JWT_SECRET" = knowledgebase-default-fileserver-jwt-secret ] ||
+                 [ "$FILESERVER_UI_SECRET" = knowledgebase-default-fileserver-ui-secret ]; then
+                echo "Les secrets du Fileserver doivent être distincts des valeurs par défaut et contenir au moins 32 caractères" >&2
+                exit 1
+              fi
+              if [ "$KB_ENV" = dev ]; then
+                if [ "${#FILESERVER_DEV_PASSWORD}" -lt 16 ]; then
+                  echo "FILESERVER_DEV_PASSWORD doit contenir au moins 16 caractères" >&2
+                  exit 1
+                fi
+                case "$FILESERVER_DEV_PASSWORD" in
+                  [[:space:]]*|*[[:space:]]) exit 1 ;;
+                esac
+              fi
+              exec /usr/local/bin/entrypoint.sh nginx -e /dev/stderr -g 'daemon off;'
           ports:
             - name: http
               containerPort: 8080
               protocol: TCP
-            - name: health
-              containerPort: 8081
-              protocol: TCP
           env:
             - name: KB_ENV
-              value: {{ .Values.global.environment | default "dev" | quote }}
+              value: {{ ternary "dev" "production" (and .Values.ingress.enabled .Values.ingress.fileserverExposed .Values.ingress.fileserverUi.enabled) | quote }}
             - name: ALLOWED_HOSTS
-              value: {{ tpl .Values.fileserver.env.allowedHosts . | quote }}
+              value: {{ default (printf "%s,%s-fileserver" $fileserverHost (include "kbv1.fullname" .)) .Values.fileserver.env.allowedHosts | quote }}
             - name: FILESERVER_LEGACY_VERSIONS_ROOT
               value: {{ .Values.fileserver.env.legacyVersionsRoot | quote }}
             - name: WEBUI_PUBLIC_ORIGIN
-              value: {{ .Values.fileserver.env.webuiPublicOrigin | default (printf "%s://%s" (ternary "https" "http" (not (empty .Values.ingress.tls))) $webuiHost) | quote }}
+              value: {{ .Values.fileserver.env.webuiPublicOrigin | default (printf "https://%s" $webuiHost) | quote }}
             - name: FILESERVER_DEV_USER
-              value: {{ default .Values.fileserver.env.devUser .Values.basicAuth.fileserver.user | quote }}
+              value: {{ .Values.fileserver.env.devUser | quote }}
             - name: FILESERVER_DEV_PASSWORD
               valueFrom:
                 secretKeyRef:
@@ -64,14 +83,20 @@ spec:
           livenessProbe:
             httpGet:
               path: /health
-              port: 8081
+              port: http
+              httpHeaders:
+                - name: Host
+                  value: {{ $fileserverHost | quote }}
             initialDelaySeconds: 10
             periodSeconds: 10
             timeoutSeconds: 5
           readinessProbe:
             httpGet:
               path: /health
-              port: 8081
+              port: http
+              httpHeaders:
+                - name: Host
+                  value: {{ $fileserverHost | quote }}
             initialDelaySeconds: 5
             periodSeconds: 5
             timeoutSeconds: 3
@@ -94,6 +119,7 @@ spec:
         - name: corpus-storage
           {{- if eq .Values.sharedStorage.corpus.type "pvc" }}
           persistentVolumeClaim:
+            # Sélectionne le PVC fourni ou le nom généré par la release.
             claimName: {{ if .Values.sharedStorage.corpus.pvcName }}{{ .Values.sharedStorage.corpus.pvcName }}{{ else }}{{ include "kbv1.fullname" . }}-corpus{{ end }}
           {{- else if eq .Values.sharedStorage.corpus.type "hostPath" }}
           hostPath:
@@ -105,6 +131,7 @@ spec:
         - name: source-versions
           {{- if eq .Values.sharedStorage.sourceVersions.type "pvc" }}
           persistentVolumeClaim:
+            # Sélectionne le PVC fourni ou le nom généré par la release.
             claimName: {{ if .Values.sharedStorage.sourceVersions.pvcName }}{{ .Values.sharedStorage.sourceVersions.pvcName }}{{ else }}{{ include "kbv1.fullname" . }}-source-versions{{ end }}
           {{- else }}
           emptyDir: {}

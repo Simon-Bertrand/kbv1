@@ -1,70 +1,54 @@
-{{- if .Values.ingress.enabled -}}
-{{- $domain := .Values.domain_name | default "kb.local" -}}
+{{- if .Values.ingress.enabled }}
+{{- $root := . }}
+{{- $routes := list
+  (dict "key" "webui" "component" "webui" "enabled" .Values.webui.enabled "port" .Values.webui.service.port "path" "/")
+  (dict "key" "kmFrontend" "component" "km-frontend" "enabled" .Values.kmFrontend.enabled "port" .Values.kmFrontend.service.port "path" "/")
+  (dict "key" "pdfparseStudio" "component" "pdfparse" "enabled" .Values.pdfparse.enabled "port" .Values.pdfparse.service.port "path" "/")
+  (dict "key" "fileserver" "component" "fileserver" "enabled" (and .Values.fileserver.enabled .Values.ingress.fileserverExposed) "port" .Values.fileserver.service.port "path" "/files")
+}}
+{{- if and .Values.fileserver.enabled .Values.ingress.fileserverExposed .Values.ingress.fileserverUi.enabled }}
+{{- $routes = append $routes (dict "key" "fileserver" "component" "fileserver-ui" "enabled" true "port" .Values.fileserver.service.port "path" "/") }}
+{{- end }}
+{{- range $route := $routes }}
+{{- if $route.enabled }}
+{{- $host := include "kbv1.host" (dict "root" $root "name" $route.key) }}
+{{- $annotations := mergeOverwrite (deepCopy $root.Values.ingress.annotations) (dict
+      "nginx.ingress.kubernetes.io/ssl-redirect" "true"
+      "nginx.ingress.kubernetes.io/force-ssl-redirect" "true") }}
+{{- /* Désactive le journal d’accès de cette route pour protéger les jetons des URL PDF. */ -}}
+{{- if eq $route.component "fileserver" }}
+{{- $_ := set $annotations "nginx.ingress.kubernetes.io/enable-access-log" "false" }}
+{{- end }}
+{{- if eq $route.component "fileserver-ui" }}
+{{- $_ := set $annotations "nginx.ingress.kubernetes.io/auth-type" "basic" }}
+{{- $_ := set $annotations "nginx.ingress.kubernetes.io/auth-secret" (required "Renseigner ingress.fileserverUi.authSecretName" $root.Values.ingress.fileserverUi.authSecretName) }}
+{{- $_ := set $annotations "nginx.ingress.kubernetes.io/auth-realm" "Fileserver" }}
+{{- end }}
+---
 apiVersion: networking.k8s.io/v1
 kind: Ingress
 metadata:
-  name: {{ include "kbv1.fullname" . }}-ingress
+  name: {{ include "kbv1.fullname" $root }}-{{ $route.component }}
   labels:
-    {{- include "kbv1.labels" . | nindent 4 }}
-  {{- with .Values.ingress.annotations }}
+    {{- include "kbv1.labels" $root | nindent 4 }}
   annotations:
-    {{- toYaml . | nindent 4 }}
-  {{- end }}
+    {{- toYaml $annotations | nindent 4 }}
 spec:
-  {{- if .Values.ingress.className }}
-  ingressClassName: {{ .Values.ingress.className }}
-  {{- end }}
-  {{- if .Values.ingress.tls }}
+  ingressClassName: {{ $root.Values.ingress.className | quote }}
   tls:
-    {{- toYaml .Values.ingress.tls | nindent 4 }}
-  {{- end }}
+    - hosts: [{{ $host | quote }}]
+      secretName: {{ required "Renseigner ingress.tlsSecretName" $root.Values.ingress.tlsSecretName | quote }}
   rules:
-    {{- if .Values.webui.enabled }}
-    - host: {{ printf "%s.%s" .Values.ingress.subdomains.webui $domain | quote }}
+    - host: {{ $host | quote }}
       http:
         paths:
-          - path: {{ .Values.ingress.paths.webui | default "/" }}
+          - path: {{ $route.path }}
             pathType: Prefix
             backend:
               service:
-                name: {{ include "kbv1.fullname" . }}-webui
+                name: {{ include "kbv1.fullname" $root }}-{{ ternary "fileserver" $route.component (eq $route.component "fileserver-ui") }}
                 port:
-                  number: {{ .Values.webui.service.port }}
-    {{- end }}
-    {{- if .Values.kmFrontend.enabled }}
-    - host: {{ printf "%s.%s" .Values.ingress.subdomains.kmFrontend $domain | quote }}
-      http:
-        paths:
-          - path: {{ .Values.ingress.paths.kmFrontend | default "/" }}
-            pathType: Prefix
-            backend:
-              service:
-                name: {{ include "kbv1.fullname" . }}-km-frontend
-                port:
-                  number: {{ .Values.kmFrontend.service.port }}
-    {{- end }}
-    {{- if .Values.pdfparse.enabled }}
-    - host: {{ printf "%s.%s" .Values.ingress.subdomains.pdfparseStudio $domain | quote }}
-      http:
-        paths:
-          - path: {{ .Values.ingress.paths.pdfparseStudio | default "/" }}
-            pathType: Prefix
-            backend:
-              service:
-                name: {{ include "kbv1.fullname" . }}-pdfparse
-                port:
-                  number: {{ .Values.pdfparse.service.port }}
-    {{- end }}
-    {{- if and .Values.fileserver.enabled .Values.ingress.fileserverExposed }}
-    - host: {{ printf "%s.%s" .Values.ingress.subdomains.fileserver $domain | quote }}
-      http:
-        paths:
-          - path: {{ .Values.ingress.paths.fileserver | default "/" }}
-            pathType: Prefix
-            backend:
-              service:
-                name: {{ include "kbv1.fullname" . }}-fileserver
-                port:
-                  number: {{ .Values.fileserver.service.port }}
-    {{- end }}
+                  number: {{ $route.port }}
+{{- end }}
+{{- end }}
 {{- end }}

@@ -1,23 +1,39 @@
 {{- if and .Values.webui.enabled (not (has .Values.webui.env.authMode (list "admin" "oidc"))) -}}
 {{- fail "webui.env.authMode doit valoir admin ou oidc" -}}
 {{- end -}}
-{{- if and (not .Values.secrets.create) (not .Values.secrets.existingSecret) -}}
-{{- fail "Renseigner secrets.existingSecret ou activer secrets.create" -}}
-{{- end -}}
-{{- if .Values.global.requireExternalSecret -}}
-{{- if or .Values.secrets.create (not .Values.secrets.existingSecret) -}}
-{{- fail "Le déploiement CI exige un Secret Kubernetes existant" -}}
-{{- end -}}
-{{- if and .Values.postgres.enabled (ne .Values.postgres.persistence.type "pvc") -}}
-{{- fail "Le déploiement CI exige un PVC PostgreSQL persistant" -}}
-{{- end -}}
-{{- if ne .Values.sharedStorage.sourceVersions.type "pvc" -}}
-{{- fail "Le déploiement CI exige un PVC partagé pour les versions PDF" -}}
-{{- end -}}
-{{- if not .Values.global.imagePullSecrets -}}
-{{- fail "Renseigner global.imagePullSecrets pour le registre GitLab" -}}
-{{- end -}}
-{{- end -}}
+{{- /* Exige une destination publique pour les PDF que WebUI ouvre dans le navigateur. */ -}}
 {{- if and .Values.webui.enabled .Values.ingress.enabled (not .Values.webui.env.fileserverPublicUrl) (not (and .Values.fileserver.enabled .Values.ingress.fileserverExposed)) -}}
 {{- fail "La WebUI exige l’Ingress Fileserver ou une URL publique Fileserver explicite" -}}
+{{- end -}}
+{{- if .Values.ingress.enabled -}}
+{{- if or (not .Values.domain_name) (not .Values.ingress.className) (not .Values.networkPolicy.ingressController.namespace) (not .Values.networkPolicy.ingressController.podLabels) -}}
+{{- fail "Renseigner le domaine, la classe et les sélecteurs du contrôleur Ingress" -}}
+{{- end -}}
+{{- $hosts := list -}}
+{{- range $name, $subdomain := .Values.ingress.subdomains -}}
+{{- if or (not $subdomain) (has $subdomain $hosts) -}}
+{{- fail (printf "Sous-domaine Ingress vide ou dupliqué pour %s" $name) -}}
+{{- end -}}
+{{- $hosts = append $hosts $subdomain -}}
+{{- end -}}
+{{- /* Vérifie que les annotations communes ne changent pas l’authentification par route. */ -}}
+{{- range $key, $_ := .Values.ingress.annotations -}}
+{{- if hasPrefix "nginx.ingress.kubernetes.io/auth-" $key -}}
+{{- fail "Les annotations Ingress d’authentification sont réservées aux routes définies par le chart" -}}
+{{- end -}}
+{{- end -}}
+{{- end -}}
+{{- if or (not .Values.networkPolicy.dns.namespace) (not .Values.networkPolicy.dns.podLabels) -}}
+{{- fail "Renseigner le namespace et les labels des pods DNS" -}}
+{{- end -}}
+{{- if not .Values.global.imageTag -}}
+{{- fail "Renseigner global.imageTag avec la VERSION publiée par GitLab" -}}
+{{- end -}}
+{{- if and .Values.pdfparse.enabled .Values.pdfparse.s3Sync.prefix -}}
+{{- if not (regexMatch "^s3://[^/]+(/.*)?$" .Values.pdfparse.s3Sync.prefix) -}}
+{{- fail "pdfparse.s3Sync.prefix doit avoir la forme s3://bucket/prefixe" -}}
+{{- end -}}
+{{- if not .Values.networkPolicy.extraEgress.pdfparse -}}
+{{- fail "Autoriser l’endpoint S3 dans networkPolicy.extraEgress.pdfparse pour activer la synchronisation" -}}
+{{- end -}}
 {{- end -}}

@@ -1,7 +1,6 @@
 {{- if .Values.webui.enabled }}
-{{- $domain := .Values.domain_name | default "kb.local" -}}
-{{- $webuiHost := printf "%s.%s" .Values.ingress.subdomains.webui $domain -}}
-{{- $fileserverHost := printf "%s.%s" .Values.ingress.subdomains.fileserver $domain -}}
+{{- $webuiHost := include "kbv1.host" (dict "root" . "name" "webui") -}}
+{{- $fileserverHost := include "kbv1.host" (dict "root" . "name" "fileserver") -}}
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -21,6 +20,8 @@ spec:
         {{- include "kbv1.selectorLabels" . | nindent 8 }}
         app.kubernetes.io/component: webui
     spec:
+      # Empêche le montage automatique d’un jeton d’accès à l’API Kubernetes.
+      automountServiceAccountToken: false
       {{- with .Values.global.imagePullSecrets }}
       imagePullSecrets:
         {{- toYaml . | nindent 8 }}
@@ -35,7 +36,7 @@ spec:
               protocol: TCP
           env:
             - name: KB_ENV
-              value: {{ .Values.global.environment | default "dev" | quote }}
+              value: {{ .Values.global.environment | quote }}
             - name: NODE_ENV
               value: {{ .Values.webui.env.nodeEnv | default "production" | quote }}
             - name: PORT
@@ -45,7 +46,7 @@ spec:
             - name: WEBUI_AGENT_URL
               value: {{ .Values.webui.env.agentUrl | quote }}
             - name: WEBUI_KM_API_URL
-              value: {{ printf "http://%s-km-api:8000" (include "kbv1.fullname" .) | quote }}
+              value: {{ printf "http://%s-km-api:%v" (include "kbv1.fullname" .) .Values.kmApi.service.port | quote }}
             - name: WEBUI_RERANKER_URL
               value: {{ .Values.webui.env.rerankerUrl | quote }}
             - name: WEBUI_CHAT_SECONDS
@@ -54,6 +55,8 @@ spec:
               value: {{ .Values.webui.env.searchMode | quote }}
             - name: WEBUI_DB_HOST
               value: {{ printf "%s-postgres" (include "kbv1.fullname" .) | quote }}
+            - name: WEBUI_DB_PORT
+              value: {{ .Values.postgres.service.port | quote }}
             - name: WEBUI_DB_NAME
               value: {{ .Values.postgres.env.db | quote }}
             - name: WEBUI_DB_USER
@@ -75,15 +78,15 @@ spec:
                   key: {{ $key }}
             {{- end }}
             - name: WEBUI_AUTH_URL
-              value: {{ .Values.webui.env.authUrl | default (printf "%s://%s" (ternary "https" "http" (not (empty .Values.ingress.tls))) $webuiHost) | quote }}
+              value: {{ .Values.webui.env.authUrl | default (printf "https://%s" $webuiHost) | quote }}
             - name: WEBUI_AUTH_TRUST_HOST
               value: {{ .Values.webui.env.authTrustHost | quote }}
             - name: WEBUI_TRUST_PROXY
               value: {{ .Values.webui.env.trustProxy | quote }}
             - name: FILESERVER_INTERNAL_URL
-              value: {{ printf "http://%s-fileserver:8080" (include "kbv1.fullname" .) | quote }}
+              value: {{ printf "http://%s-fileserver:%v" (include "kbv1.fullname" .) .Values.fileserver.service.port | quote }}
             - name: FILESERVER_PUBLIC_URL
-              value: {{ .Values.webui.env.fileserverPublicUrl | default (printf "%s://%s" (ternary "https" "http" (not (empty .Values.ingress.tls))) $fileserverHost) | quote }}
+              value: {{ .Values.webui.env.fileserverPublicUrl | default (printf "https://%s" $fileserverHost) | quote }}
             - name: WEBUI_AUTH_SECRET
               valueFrom:
                 secretKeyRef:
@@ -99,11 +102,13 @@ spec:
                 secretKeyRef:
                   name: {{ include "kbv1.secretName" . }}
                   key: KM_API_TOKEN
+            {{- if .Values.webui.env.agentUrl }}
             - name: KM_AGENT_SERVICE_TOKEN
               valueFrom:
                 secretKeyRef:
                   name: {{ include "kbv1.secretName" . }}
                   key: KM_AGENT_TOKEN
+            {{- end }}
           livenessProbe:
             httpGet:
               path: /health

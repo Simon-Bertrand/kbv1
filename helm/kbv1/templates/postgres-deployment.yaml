@@ -9,6 +9,7 @@ metadata:
 spec:
   replicas: 1
   strategy:
+    # Arrête l’ancien PostgreSQL avant de démarrer le nouveau sur le même volume.
     type: Recreate
   selector:
     matchLabels:
@@ -20,6 +21,8 @@ spec:
         {{- include "kbv1.selectorLabels" . | nindent 8 }}
         app.kubernetes.io/component: postgres
     spec:
+      # Empêche le montage automatique d’un jeton d’accès à l’API Kubernetes.
+      automountServiceAccountToken: false
       {{- with .Values.global.imagePullSecrets }}
       imagePullSecrets:
         {{- toYaml . | nindent 8 }}
@@ -92,6 +95,7 @@ spec:
         - name: postgres-data
           {{- if eq .Values.postgres.persistence.type "pvc" }}
           persistentVolumeClaim:
+            # Sélectionne le PVC fourni ou le nom généré par la release.
             claimName: {{ if .Values.postgres.persistence.pvcName }}{{ .Values.postgres.persistence.pvcName }}{{ else }}{{ include "kbv1.fullname" . }}-postgres-data{{ end }}
           {{- else if eq .Values.postgres.persistence.type "hostPath" }}
           hostPath:

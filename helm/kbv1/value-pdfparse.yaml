@@ -1,0 +1,86 @@
+# Profil PdfParse seul. Adapter le domaine, le nom ADD, le registre et l'Issuer.
+# Vérifier le cluster ciblé et ouvrir le namespace qui contient les Secrets et les volumes.
+# kubectl config current-context
+# NS=namespace
+# kubectl get namespace "$NS"
+# Le nom d'utilisateur du Studio est studio. GitLab fournit le tag de l'image.
+# Pour vérifier le profil avant installation, prévisualiser les manifestes avec Helm.
+# helm template kbv1 helm/kbv1 -n "$NS" -f helm/kbv1/value-pdfparse.yaml
+
+# Domaine du site. Pour km-demo-01.example.test, saisir example.test.
+# kubectl -n "$NS" get ingress -o custom-columns='NAME:.metadata.name,HOSTS:.spec.rules[*].host'
+domain_name: example.test
+
+global:
+  # Saisir l'hôte Gitea et le compte qui possède l'image. GitLab fournit cette valeur au déploiement.
+  # Sur un site déjà déployé, repérer l'image et retirer /km-pdfparse et son tag.
+  # kubectl -n "$NS" get deploy -l app.kubernetes.io/component=pdfparse -o custom-columns='IMAGE:.spec.template.spec.containers[*].image'
+  imageRegistry: gitea.example.com/compte
+  imagePullSecrets:
+    # Secret utilisé pour télécharger l'image privée. Le type attendu est kubernetes.io/dockerconfigjson.
+    # kubectl -n "$NS" get secret km-pull-secrets -o jsonpath='{.type}'
+    # Pour le créer ou le renouveler, fournir un config.json contenant les identifiants de lecture Gitea.
+    # GITEA_DOCKER_CONFIG=/chemin/vers/config.json
+    # kubectl -n "$NS" create secret generic km-pull-secrets --type=kubernetes.io/dockerconfigjson --from-file=.dockerconfigjson="$GITEA_DOCKER_CONFIG" --dry-run=client -o yaml | kubectl -n "$NS" apply --server-side --field-manager=km-pull-secrets -f -
+    - name: km-pull-secrets
+
+secrets:
+  # Le Secret doit contenir la clé PDFPARSE_ADMIN_PASSWORD. Cette commande affiche les clés seules.
+  # kubectl -n "$NS" get secret km-runtime-secrets -o go-template='{{range $key, $value := .data}}{{println $key}}{{end}}'
+  # Pour créer ou changer le mot de passe, utiliser un fichier protégé de 16 caractères minimum, sans retour à la ligne.
+  # PDFPARSE_PASSWORD_FILE=/chemin/vers/mot-de-passe
+  # kubectl -n "$NS" create secret generic km-runtime-secrets --from-file=PDFPARSE_ADMIN_PASSWORD="$PDFPARSE_PASSWORD_FILE" --dry-run=client -o yaml | kubectl -n "$NS" apply --server-side --field-manager=pdfparse-runtime -f -
+  # Après une rotation, redémarrer le Deployment pour charger le nouveau mot de passe.
+  # kubectl -n "$NS" rollout restart deployment/kbv1-pdfparse
+  existingSecret: km-runtime-secrets
+
+ingress:
+  annotations:
+    # Remplacer km-issuer par le nom d'un Issuer dont READY vaut True.
+    # kubectl -n "$NS" get issuers.cert-manager.io
+    # Pour un ClusterIssuer, utiliser la clé cert-manager.io/cluster-issuer.
+    # kubectl get clusterissuers.cert-manager.io
+    cert-manager.io/issuer: km-issuer
+  # Cert-manager crée et renouvelle le Secret TLS après le déploiement.
+  # kubectl -n "$NS" wait --for=condition=Ready certificate/km-tls-secret --timeout=5m
+  # kubectl -n "$NS" describe certificate km-tls-secret
+  tlsSecretName: km-tls-secret
+  subdomains:
+    # Remplacer nom-add par le nom ADD en minuscules, avec des tirets entre les mots.
+    # Pour km-demo-01.example.test, saisir km-demo-01. Helm ajoute domain_name.
+    # kubectl -n "$NS" get ingress -o custom-columns='NAME:.metadata.name,HOSTS:.spec.rules[*].host'
+    pdfparseStudio: km-nom-add-01
+
+# Ces réglages excluent les autres applications et leurs volumes du profil.
+# kubectl -n "$NS" get deployments,pvc -l app.kubernetes.io/instance=kbv1
+postgres:
+  enabled: false
+  persistence:
+    # Empêche la création du PVC PostgreSQL par helm/kbv1/templates/volumes.yaml:75.
+    type: emptyDir
+fileserver: {enabled: false}
+encoder: {enabled: false}
+indexer: {enabled: false}
+kmApi: {enabled: false}
+kmFrontend: {enabled: false}
+webui: {enabled: false}
+
+pdfparse:
+  s3Sync:
+    # Pour activer la copie, saisir le préfixe commun, par exemple s3://mon-bucket/pdfparse.
+    # Ajouter aussi l'accès à l'endpoint S3 dans networkPolicy.extraEgress.pdfparse.
+    prefix: ""
+    # Pour forcer une nouvelle copie depuis le même préfixe, définir revision (exemple v2).
+
+sharedStorage:
+  corpus:
+    # PVC existant qui contient les PDF et se monte sur /data.
+    # kubectl -n "$NS" get pvc km-data
+    pvcName: km-data
+  models:
+    # PVC existant qui contient les modèles et se monte sur /models.
+    # kubectl -n "$NS" get pvc km-models
+    pvcName: km-models
+  sourceVersions:
+    # Empêche la création du PVC des versions archivées par helm/kbv1/templates/volumes.yaml:26.
+    type: emptyDir

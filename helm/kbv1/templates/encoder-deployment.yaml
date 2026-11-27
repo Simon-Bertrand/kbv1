@@ -18,6 +18,8 @@ spec:
         {{- include "kbv1.selectorLabels" . | nindent 8 }}
         app.kubernetes.io/component: encoder
     spec:
+      # Empêche le montage automatique d’un jeton d’accès à l’API Kubernetes.
+      automountServiceAccountToken: false
       {{- with .Values.global.imagePullSecrets }}
       imagePullSecrets:
         {{- toYaml . | nindent 8 }}
@@ -31,10 +33,25 @@ spec:
               containerPort: 8001
               protocol: TCP
           env:
+            - name: KB_ENV
+              value: {{ .Values.global.environment | quote }}
+            - name: KM_ENCODER_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "kbv1.secretName" . }}
+                  key: KM_ENCODER_TOKEN
             - name: MODELS_DIR
               value: {{ .Values.encoder.env.modelsDir | quote }}
             - name: E5_DEVICE
-              value: {{ .Values.encoder.env.e5Device | quote }}
+              value: "cpu"
+            {{- range $variable := list "OMP_NUM_THREADS" "MKL_NUM_THREADS" }}
+            # Aligne les threads OpenMP et MKL sur la limite CPU du conteneur.
+            - name: {{ $variable }}
+              valueFrom:
+                resourceFieldRef:
+                  resource: limits.cpu
+                  divisor: "1"
+            {{- end }}
           livenessProbe:
             httpGet:
               path: /health
@@ -59,6 +76,7 @@ spec:
         - name: models-storage
           {{- if eq .Values.sharedStorage.models.type "pvc" }}
           persistentVolumeClaim:
+            # Sélectionne le PVC fourni ou le nom généré par la release.
             claimName: {{ if .Values.sharedStorage.models.pvcName }}{{ .Values.sharedStorage.models.pvcName }}{{ else }}{{ include "kbv1.fullname" . }}-models{{ end }}
           {{- else if eq .Values.sharedStorage.models.type "hostPath" }}
           hostPath:

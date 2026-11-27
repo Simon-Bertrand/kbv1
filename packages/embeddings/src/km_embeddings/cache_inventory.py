@@ -16,7 +16,7 @@ def describe_caches(parser, folder='', selections=None, rows=None):
                 row.update(indexing_status='blocked',comparison_error='Aucun cache compatible avec le PDF actuel.')
                 continue
             bundle=bind_bundle(bundle,read_metadata(parser.root,row['path']))
-            chunks={record['id']:hashlib.sha256(record['embedding_text'].encode()).hexdigest() for record in bundle['chunks']}
+            chunks={record['id']:hashlib.sha256((record.get('text') or record.get('embedding_text')).encode()).hexdigest() for record in bundle['chunks']}
             if len(chunks)!=len(bundle['chunks']) or not chunks:
                 raise ValueError('Cache vide ou identités de chunks dupliquées.')
             row['cached_chunks']=len(chunks)

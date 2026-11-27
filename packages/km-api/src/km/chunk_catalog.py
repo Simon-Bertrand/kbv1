@@ -20,8 +20,8 @@ def refresh_cache(conn,scope,root,upstream,file,key,metadata):
             digest=bundle['metadata']['pdfparse_cache_digest']
             def rows():
                 for ordinal,record in enumerate(records):
-                    text=record.get('embedding_text')
-                    if not isinstance(text,str) or not text.strip():raise ValueError('Chunk sans embedding_text.')
+                    text=record.get('text') or record.get('embedding_text')
+                    if not isinstance(text,str) or not text.strip():raise ValueError('Chunk sans texte.')
                     pages=record.get('body_pages') or record.get('pages') or []
                     if not pages:
                         pages=sorted({p.get('page_no') for p in record.get('locations',[]) if type(p.get('page_no')) is int and p['page_no']>0})

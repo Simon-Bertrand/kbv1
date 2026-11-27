@@ -1,6 +1,9 @@
 name: kbv1
 
-# Ce lien remonte depuis packages/pdfparse jusqu'au workspace et son uv.lock.
+x-python-build: &python-build
+  additional_contexts:
+    workspace: .
+  network: default
 
 services:
   postgres:
@@ -75,11 +78,16 @@ services:
     image: kbv1/pdfparse:local
     pull_policy: never
     build:
-      context: .
-      dockerfile: packages/pdfparse/Dockerfile
-      network: none
+      network: default
+      context: ./packages/pdfparse
+      additional_contexts:
+        workspace: .
+        pdfparse_native: ${WHEELHOUSE_DIR:-./.wheelhouse}/native
+      args:
+        PDFPARSE_WHEEL_PROFILE: ${PDFPARSE_WHEEL_PROFILE:-pdfparse}
     environment:
       KB_ENV: dev
+      KM_SKIP_MOUNTSYNC: "1"
       ALLOWED_HOSTS: localhost,127.0.0.1,fileserver
       MODELS_DIR: /models
       PDFPARSE_ADMIN_USER: ${PDFPARSE_ADMIN_USER:-studio}
@@ -94,7 +102,7 @@ services:
       - pdfparse-assets:/assets
       - &models
         type: bind
-        source: ${MODELS_DIR:-./models}
+        source: ${MODELS_DIR:-/mnt/e/models}
         target: /models
         read_only: true
         bind:
@@ -104,14 +112,18 @@ services:
     image: kbv1/encoder:local
     pull_policy: never
     build:
-      context: .
-      dockerfile: packages/embeddings/Dockerfile
-      network: none
+      <<: *python-build
+      context: ./packages/embeddings
     environment:
       MODELS_DIR: /models
       E5_DEVICE: cpu
+      E5_BATCH_SIZE: 32
     ports:
       - "127.0.0.1:${ENCODER_PORT:-8001}:8001"
+    healthcheck:
+      # E5 vérifie les poids avant d’ouvrir son port. Un montage WSL peut
+      # prolonger cette lecture bien au-delà du délai de démarrage de l’image.
+      start_period: 20m
     volumes:
       - *models
 
@@ -129,9 +141,8 @@ services:
       - --
     command: ["python", "-m", "uvicorn", "km_embeddings.index_service:app", "--host", "0.0.0.0", "--port", "8011", "--workers", "1", "--no-proxy-headers"]
     build:
-      context: .
-      dockerfile: packages/embeddings/indexer/Dockerfile
-      network: none
+      <<: *python-build
+      context: ./packages/embeddings/indexer
     environment:
       KB_ENV: dev
       ENCODER_URL: http://encoder:8001
@@ -173,9 +184,8 @@ services:
     image: kbv1/km-api:local
     pull_policy: never
     build:
-      context: .
-      dockerfile: packages/km-api/Dockerfile
-      network: none
+      <<: *python-build
+      context: ./packages/km-api
     environment:
       KB_ENV: dev
       KB_KM_SCHEMA: "1"
@@ -204,9 +214,8 @@ services:
     image: kbv1/km-frontend:local
     pull_policy: never
     build:
-      context: .
-      dockerfile: packages/km-frontend/Dockerfile
-      network: none
+      <<: *python-build
+      context: ./packages/km-frontend
     environment:
       KB_ENV: dev
       FRONTEND_RAG_URL: http://km-api:8000
@@ -247,7 +256,7 @@ services:
       - no-new-privileges:true
     build:
       context: ./packages/webui
-      network: none
+      network: default
     environment:
       KB_ENV: dev
       WEBUI_AGENT_URL: ${WEBUI_AGENT_URL:-http://km-agent:8086}

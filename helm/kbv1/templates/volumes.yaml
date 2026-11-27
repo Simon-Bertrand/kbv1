@@ -1,4 +1,30 @@
+{{- $root := . }}
+{{- $sharedClaims := dict
+    "corpus" (or .Values.fileserver.enabled .Values.pdfparse.enabled .Values.indexer.enabled .Values.kmApi.enabled)
+    "models" (or .Values.pdfparse.enabled .Values.encoder.enabled) }}
+{{- range $name, $enabled := $sharedClaims }}
+{{- $volume := index $root.Values.sharedStorage $name }}
+{{- if and $enabled (eq $volume.type "pvc") (not $volume.pvcName) }}
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: {{ include "kbv1.fullname" $root }}-{{ $name }}
+  labels:
+    {{- include "kbv1.labels" $root | nindent 4 }}
+spec:
+  {{- with $volume.storageClassName }}
+  storageClassName: {{ . | quote }}
+  {{- end }}
+  accessModes:
+    - ReadWriteMany
+  resources:
+    requests:
+      storage: {{ $volume.size }}
+{{- end }}
+{{- end }}
 {{- if and (eq .Values.sharedStorage.sourceVersions.type "pvc") (not .Values.sharedStorage.sourceVersions.pvcName) }}
+---
 apiVersion: v1
 kind: PersistentVolumeClaim
 metadata:

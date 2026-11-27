@@ -8,6 +8,11 @@ metadata:
     app.kubernetes.io/component: pdfparse
 spec:
   replicas: 1
+  {{- if .Values.pdfparse.gpu.enabled }}
+  # Libère le GPU de l'ancien pod avant de lancer le nouveau.
+  strategy:
+    type: Recreate
+  {{- end }}
   selector:
     matchLabels:
       {{- include "kbv1.selectorLabels" . | nindent 6 }}
@@ -18,9 +23,67 @@ spec:
         {{- include "kbv1.selectorLabels" . | nindent 8 }}
         app.kubernetes.io/component: pdfparse
     spec:
+      # Empêche le montage automatique d’un jeton d’accès à l’API Kubernetes.
+      automountServiceAccountToken: false
       {{- with .Values.global.imagePullSecrets }}
       imagePullSecrets:
         {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.pdfparse.s3Sync }}
+      {{- if .prefix }}
+      initContainers:
+        - name: s3-ingest
+          image: {{ default (printf "%s/aws-cli:2" (trimSuffix "/" $.Values.global.imageRegistry)) .image | quote }}
+          securityContext:
+            runAsUser: 1000
+            runAsGroup: 1000
+          envFrom:
+            - secretRef:
+                name: {{ required "Renseigner pdfparse.s3Sync.existingSecret" .existingSecret | quote }}
+                optional: true
+          env:
+            - name: HOME
+              value: /tmp
+            - name: AWS_PAGER
+              value: ""
+            - name: S3_PREFIX
+              value: {{ .prefix | quote }}
+            - name: S3_SYNC_REVISION
+              value: {{ .revision | quote }}
+          command: ["/bin/sh", "-ec"]
+          args:
+            - |
+              if [ "${KM_SKIP_MOUNTSYNC:-0}" = 1 ]; then
+                echo "Synchronisation S3 désactivée"
+                exit 0
+              fi
+              case "$S3_PREFIX" in s3://?*) ;; *) echo "S3_PREFIX doit commencer par s3://" >&2; exit 1 ;; esac
+              sync_prefix() (
+                source="${S3_PREFIX%/}/$1/"
+                marker="$2/.kbv1-s3-sync"
+                if [ -r "$marker" ] && {
+                  IFS= read -r synced_source && IFS= read -r synced_revision
+                } < "$marker" && [ "$synced_source" = "$source" ] && [ "$synced_revision" = "$S3_SYNC_REVISION" ]; then
+                  echo "$2 déjà synchronisé"
+                  exit 0
+                fi
+                : "${AWS_ACCESS_KEY_ID:?Renseigner AWS_ACCESS_KEY_ID dans le Secret S3}"
+                : "${AWS_SECRET_ACCESS_KEY:?Renseigner AWS_SECRET_ACCESS_KEY dans le Secret S3}"
+                aws s3 sync "$source" "$2/" --exclude '.kbv1-s3-sync*' \
+                  --exact-timestamps --checksum-mode ENABLED --no-follow-symlinks --no-progress
+                temporary=$(mktemp "$marker.XXXXXX")
+                trap 'rm -f "$temporary"' EXIT
+                printf '%s\n' "$source" "$S3_SYNC_REVISION" > "$temporary"
+                mv -f "$temporary" "$marker"
+              )
+              sync_prefix documents /data
+              sync_prefix modeles /models
+          volumeMounts:
+            - name: corpus-storage
+              mountPath: /data
+            - name: models-storage
+              mountPath: /models
+      {{- end }}
       {{- end }}
       containers:
         - name: pdfparse
@@ -32,15 +95,17 @@ spec:
               protocol: TCP
           env:
             - name: KB_ENV
-              value: {{ .Values.global.environment | default "dev" | quote }}
+              value: {{ .Values.global.environment | quote }}
             - name: ALLOWED_HOSTS
-              value: {{ tpl .Values.pdfparse.env.allowedHosts . | quote }}
+              value: {{ default (include "kbv1.host" (dict "root" . "name" "pdfparseStudio")) .Values.pdfparse.env.allowedHosts | quote }}
             - name: MODELS_DIR
               value: {{ .Values.pdfparse.env.modelsDir | quote }}
             - name: DATA_DIR
               value: {{ .Values.pdfparse.env.dataDir | quote }}
+            - name: PDFPARSE_ASSETS_DIR
+              value: /assets
             - name: PDFPARSE_ADMIN_USER
-              value: {{ default .Values.pdfparse.env.adminUser .Values.basicAuth.pdfparse.user | quote }}
+              value: {{ .Values.pdfparse.env.adminUser | quote }}
             - name: PDFPARSE_ADMIN_PASSWORD
               valueFrom:
                 secretKeyRef:
@@ -55,29 +120,31 @@ spec:
             - name: assets-storage
               mountPath: /assets
           livenessProbe:
-            httpGet:
-              path: /health
-              port: 8000
+            # Vérifie que l’application écoute sans fournir d’identifiants HTTP.
+            tcpSocket:
+              port: http
             initialDelaySeconds: 15
             periodSeconds: 20
             timeoutSeconds: 5
           readinessProbe:
-            httpGet:
-              path: /health
-              port: 8000
+            # Vérifie que l’application écoute sans fournir d’identifiants HTTP.
+            tcpSocket:
+              port: http
             initialDelaySeconds: 10
             periodSeconds: 10
             timeoutSeconds: 5
           resources:
-            {{- toYaml .Values.pdfparse.resources | nindent 12 }}
+            {{- $resources := deepCopy .Values.pdfparse.resources }}
             {{- if .Values.pdfparse.gpu.enabled }}
-            limits:
-              nvidia.com/gpu: {{ .Values.pdfparse.gpu.count | quote }}
+            {{- /* Réserve exactement un GPU sans supprimer les demandes CPU et RAM. */ -}}
+            {{- $resources = mergeOverwrite $resources (dict "requests" (dict "nvidia.com/gpu" 1) "limits" (dict "nvidia.com/gpu" 1)) }}
             {{- end }}
+            {{- toYaml $resources | nindent 12 }}
       volumes:
         - name: corpus-storage
           {{- if eq .Values.sharedStorage.corpus.type "pvc" }}
           persistentVolumeClaim:
+            # Sélectionne le PVC fourni ou le nom généré par la release.
             claimName: {{ if .Values.sharedStorage.corpus.pvcName }}{{ .Values.sharedStorage.corpus.pvcName }}{{ else }}{{ include "kbv1.fullname" . }}-corpus{{ end }}
           {{- else if eq .Values.sharedStorage.corpus.type "hostPath" }}
           hostPath:
@@ -89,6 +156,7 @@ spec:
         - name: models-storage
           {{- if eq .Values.sharedStorage.models.type "pvc" }}
           persistentVolumeClaim:
+            # Sélectionne le PVC fourni ou le nom généré par la release.
             claimName: {{ if .Values.sharedStorage.models.pvcName }}{{ .Values.sharedStorage.models.pvcName }}{{ else }}{{ include "kbv1.fullname" . }}-models{{ end }}
           {{- else if eq .Values.sharedStorage.models.type "hostPath" }}
           hostPath:
@@ -100,6 +168,7 @@ spec:
         - name: assets-storage
           {{- if eq .Values.sharedStorage.pdfparseAssets.type "pvc" }}
           persistentVolumeClaim:
+            # Sélectionne le PVC fourni ou le nom généré par la release.
             claimName: {{ if .Values.sharedStorage.pdfparseAssets.pvcName }}{{ .Values.sharedStorage.pdfparseAssets.pvcName }}{{ else }}{{ include "kbv1.fullname" . }}-pdfparse-assets{{ end }}
           {{- else }}
           emptyDir: {}

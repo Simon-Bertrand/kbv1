@@ -58,8 +58,8 @@ make webui
 Cette commande reconstruit WebUI hors ligne et met à jour uniquement ses entrées
 dans les bundles existants, sans réexporter les autres services :
 
-- `.tarball/build/webui-runtime.tar` : base Node.js ;
-- `.tarball/build/webui.tar` : dépendances npm de construction ;
+- `.tarball/build/base-webui.tar` : base Node.js ;
+- `.tarball/build/build-webui.tar` : dépendances npm de construction ;
 - `.tarball/dev/webui.tar` et `.tarball/prod/webui.tar` : application Next.js.
 
 Les `manifest.json` et `SHA256SUMS` de chaque dossier sont actualisés. Les autres

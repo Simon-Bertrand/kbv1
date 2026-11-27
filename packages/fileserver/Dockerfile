@@ -1,6 +1,7 @@
-FROM knowledgebase/base-fileserver:local AS nginx-base
+ARG BUILD_IMAGE_PREFIX=knowledgebase
+FROM ${BUILD_IMAGE_PREFIX}/base-fileserver:latest AS nginx-base
 
-FROM knowledgebase/build-fileserver:local AS modzip-build
+FROM ${BUILD_IMAGE_PREFIX}/build-fileserver:latest AS modzip-build
 
 # Build against the same Alpine NGINX as the runtime. The packaged mod_zip
 # 1.3.0 needs a NULL-upstream guard and correct dynamic filter ordering.

@@ -32,17 +32,12 @@ torchvision = { index = "pytorch-cu130" }
 
 [tool.uv.workspace]
 members = [
-    "packages/km-agent",
-    "packages/database/clients/python",
     "packages/embeddings",
-    "packages/finetuning/dfctune",
-    "packages/finetuning/embedtune",
     "packages/km-frontend",
-    "packages/ingestion",
     "packages/km-api",
     "packages/pdfparse",
-    "packages/reranker",
 ]
+exclude = ["packages/database/clients/python"]
 
 [[tool.uv.index]]
 name = "paddle-cu118"
@@ -57,12 +52,8 @@ explicit = true
 [tool.pytest.ini_options]
 pythonpath = [
     ".",
-    "packages/km-agent/src",
     "packages/km-frontend",
     "packages/embeddings/src",
     "packages/km-api/src",
-    "packages/ingestion/src",
-    "packages/reranker/src",
-    "packages/database/clients/python/src",
     "packages/pdfparse/src",
 ]
